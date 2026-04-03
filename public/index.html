@@ -267,6 +267,7 @@ textarea.note:focus{outline:none;border-color:var(--green);background:#fff}
     </div>
     <span class="u-name" id="u-name"></span>
     <span class="role-pill" id="u-role"></span>
+    <button class="btn btn-xs" id="outlook-btn" style="display:none" onclick="connectOutlook()">📧 Outlook</button>
     <button class="btn btn-xs" onclick="doLogout()">Esci</button>
   </div>
   <div class="app-body">
@@ -472,6 +473,7 @@ sb.auth.onAuthStateChange(async(event,session)=>{
     if(me){
       document.getElementById('u-name').textContent=me.full_name;
       const rp=document.getElementById('u-role');rp.textContent=me.role;rp.className='role-pill rp-'+me.role;
+      document.getElementById('outlook-btn').style.display='block';
       if(me.role!=='agent'){document.getElementById('team-tab').style.display='block';document.getElementById('bn-t').style.display='flex';document.getElementById('new-proj-btn').style.display='block'}
     }
     document.getElementById('auth').style.display='none';
@@ -479,6 +481,12 @@ sb.auth.onAuthStateChange(async(event,session)=>{
     await loadTeam();loadPipeline();loadTasks();loadProjects();
   }
 });
+
+async function loadTasks(){try{const{tasks}=await api('/api/tasks');if(!window.allTasks)window.allTasks=tasks;renderTasksList(tasks);checkOutlookStatus()}catch(e){toast('Errore caricamento task: '+e.message)}}
+
+async function checkOutlookStatus(){try{const{connected}=await api('/api/outlook/status');if(connected){document.getElementById('outlook-btn').textContent='✓ Outlook connesso';document.getElementById('outlook-btn').style.background='#1D9E75';document.getElementById('outlook-btn').style.color='#fff'}else{document.getElementById('outlook-btn').textContent='📧 Connetti Outlook';document.getElementById('outlook-btn').style.background='';document.getElementById('outlook-btn').style.color=''}}catch(e){}}
+
+async function connectOutlook(){try{const{authUrl}=await api('/api/outlook/authorize');window.open(authUrl,'outlook_auth','width=600,height=700');setTimeout(()=>{checkOutlookStatus();loadTasks()},2000)}catch(e){toast(e.message)}}
 
 async function loadTasks(){try{const{tasks}=await api('/api/tasks');if(!window.allTasks)window.allTasks=tasks;renderTasksList(tasks)}catch(e){toast('Errore caricamento task: '+e.message)}}
 

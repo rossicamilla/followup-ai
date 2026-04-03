@@ -28,6 +28,7 @@ app.use('/api/transcribe', require('./routes/transcribe'));
 app.use('/api/contacts', require('./routes/contacts'));
 app.use('/api/tasks', require('./routes/tasks'));
 app.use('/api/projects', require('./routes/projects-new'));
+app.use('/api/outlook', require('./routes/outlook'));
 app.use('/api/team', require('./routes/team'));
 
 app.get('/health', (req, res) => {

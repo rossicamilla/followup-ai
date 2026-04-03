@@ -74,7 +74,27 @@ router.post('/', requireAuth, async (req, res) => {
       .single();
 
     if (error) throw error;
-    res.json({ success: true, task: data });
+    
+    // Sincronizza con Outlook Calendar se l'utente è connesso
+    if (due_date) {
+      try {
+        const outlookRoute = require('./outlook');
+        // Chiamata interna per sincronizzare
+        await fetch(`${process.env.BACKEND}/api/outlook/sync-task`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${req.header('Authorization')?.replace('Bearer ', '')}`
+          },
+          body: JSON.stringify({ task_id: data.id })
+        }).catch(() => {}); // Non bloccare se Outlook non è disponibile
+      } catch (e) {
+        // Outlook sync fallito, ma il task è stato comunque creato
+        console.log('Outlook sync warning:', e.message);
+      }
+    }
+
+    res.json({ success: true, task: data, outlookSynced: due_date ? 'pending' : 'no_date' });
   } catch (e) {
     console.error('Errore POST task:', e.message);
     res.status(500).json({ error: e.message });
@@ -136,6 +156,23 @@ router.patch('/:id', requireAuth, async (req, res) => {
       .single();
 
     if (error) throw error;
+    
+    // Sincronizza completamento con Outlook
+    if (completed !== undefined) {
+      try {
+        await fetch(`${process.env.BACKEND}/api/outlook/sync-task/${req.params.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${req.header('Authorization')?.replace('Bearer ', '')}`
+          },
+          body: JSON.stringify({ completed })
+        }).catch(() => {});
+      } catch (e) {
+        console.log('Outlook sync warning:', e.message);
+      }
+    }
+
     res.json({ success: true, task: data });
   } catch (e) {
     console.error('Errore PATCH task:', e.message);
