@@ -23,7 +23,7 @@ router.get('/authorize', requireAuth, (req, res) => {
   const authUrl = `https://login.microsoftonline.com/${MICROSOFT_TENANT}/oauth2/v2.0/authorize?
     client_id=${MICROSOFT_CLIENT_ID}
     &response_type=code
-    &scope=https://graph.microsoft.com/Calendars.ReadWrite offline_access
+    &scope=https://graph.microsoft.com/Calendars.ReadWrite https://graph.microsoft.com/Mail.Read offline_access
     &redirect_uri=${encodeURIComponent(MICROSOFT_REDIRECT_URI)}
     &state=${req.profile.id}
     &prompt=consent`.replace(/\n/g, '').replace(/\s+/g, '');
@@ -33,10 +33,16 @@ router.get('/authorize', requireAuth, (req, res) => {
 
 // Callback dopo che l'utente autorizza
 router.get('/callback', async (req, res) => {
-  const { code, state: userId } = req.query;
-  
+  const { code, state: userId, error, error_description } = req.query;
+
+  // Microsoft ha restituito un errore OAuth
+  if (error) {
+    console.error('Outlook OAuth error:', error, error_description);
+    return res.redirect(`/?outlook=error&msg=${encodeURIComponent(error_description || error)}`);
+  }
+
   if (!code || !userId) {
-    return res.status(400).json({ error: 'Missing code or state' });
+    return res.redirect('/?outlook=error&msg=Missing+code+or+state');
   }
 
   try {
