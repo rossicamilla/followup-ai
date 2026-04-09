@@ -2,367 +2,349 @@ import { useState, useEffect } from 'react'
 import { api } from '../../lib/api'
 import { useApp } from '../../App'
 import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
+  DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors,
 } from '@dnd-kit/core'
-import {
-  arrayMove,
-  SortableContext,
-  useSortable,
-  rectSortingStrategy,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
+import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 
-const STATUS = { active: { label: 'Attivo', cls: 'bg-brand-50 text-brand-600' }, on_hold: { label: 'In pausa', cls: 'bg-amber-50 text-amber-700' }, completed: { label: 'Completato', cls: 'bg-blue-50 text-blue-700' }, cancelled: { label: 'Annullato', cls: 'bg-warm-100 text-warm-500' } }
-const PRI_DOT = { urgent: 'bg-red-500', high: 'bg-amber-400', medium: 'bg-brand-500', low: 'bg-warm-300' }
+const STAGES = [
+  { key: 'idea',     label: 'Idea',     color: 'text-warm-600',   dot: 'bg-warm-400',   bg: 'bg-warm-50' },
+  { key: 'sviluppo', label: 'Sviluppo', color: 'text-blue-600',   dot: 'bg-blue-400',   bg: 'bg-blue-50' },
+  { key: 'test',     label: 'Test',     color: 'text-amber-600',  dot: 'bg-amber-400',  bg: 'bg-amber-50' },
+  { key: 'pronto',   label: 'Pronto',   color: 'text-brand-600',  dot: 'bg-brand-500',  bg: 'bg-brand-50' },
+]
+const MARKETS = ['Retail', 'Horeca', 'Export', 'Interno']
+const PRIORITIES = [
+  { key: 'bassa', label: 'Bassa', cls: 'bg-warm-100 text-warm-500' },
+  { key: 'media', label: 'Media', cls: 'bg-amber-50 text-amber-700' },
+  { key: 'alta',  label: 'Alta',  cls: 'bg-red-50 text-red-600' },
+]
+const priMap = Object.fromEntries(PRIORITIES.map(p => [p.key, p]))
 
-function SortableProjectCard({ project, onOpen }) {
+// ── Modal crea/modifica progetto ──────────────────────────────────────
+function ProjectModal({ project, onClose, onSaved, onDeleted }) {
+  const { profile } = useApp()
+  const isNew = !project
+  const [form, setForm] = useState({
+    name: project?.name || '',
+    description: project?.description || '',
+    market: project?.market || 'Retail',
+    stage: project?.stage || 'idea',
+    priority: project?.priority || 'media',
+    supplier: project?.supplier || '',
+    weight_format: project?.weight_format || '',
+    cost_per_unit: project?.cost_per_unit || '',
+    notes: project?.notes || '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  async function save(e) {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      const body = {
+        ...form,
+        cost_per_unit: form.cost_per_unit ? parseFloat(form.cost_per_unit) : null,
+        supplier: form.supplier || null,
+        weight_format: form.weight_format || null,
+      }
+      const d = isNew
+        ? await api('/api/projects', { method: 'POST', body })
+        : await api(`/api/projects/${project.id}`, { method: 'PATCH', body })
+      onSaved(d.project, isNew)
+      onClose()
+    } catch (err) { alert(err.message) }
+    setSaving(false)
+  }
+
+  async function del() {
+    if (!confirm(`Eliminare il progetto "${project.name}"?`)) return
+    setDeleting(true)
+    try {
+      await api(`/api/projects/${project.id}`, { method: 'DELETE' })
+      onDeleted(project.id)
+      onClose()
+    } catch (err) { alert(err.message) }
+    setDeleting(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-end md:items-center justify-center p-0 md:p-4"
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-white rounded-t-2xl md:rounded-2xl w-full max-w-lg max-h-[92vh] flex flex-col shadow-2xl">
+
+        {/* Header */}
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-warm-100 flex-shrink-0">
+          <div className="flex-1 font-700 text-warm-900 text-sm">
+            {isNew ? 'Nuovo progetto' : project.name}
+          </div>
+          <button onClick={onClose} className="text-warm-300 hover:text-warm-600">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4"><path d="M3 3l10 10M13 3L3 13"/></svg>
+          </button>
+        </div>
+
+        {/* Form */}
+        <form id="proj-form" onSubmit={save} className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-none">
+
+          <div>
+            <label className="text-xs font-600 text-warm-500 mb-1 block">Nome progetto *</label>
+            <input value={form.name} onChange={e => set('name', e.target.value)} required
+              placeholder="Es: OOH! Dessert Frozen 200g"
+              className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50"/>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-xs font-600 text-warm-500 mb-1 block">Stage</label>
+              <select value={form.stage} onChange={e => set('stage', e.target.value)}
+                className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50">
+                {STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-600 text-warm-500 mb-1 block">Mercato</label>
+              <select value={form.market} onChange={e => set('market', e.target.value)}
+                className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50">
+                {MARKETS.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-600 text-warm-500 mb-1 block">Priorità</label>
+              <select value={form.priority} onChange={e => set('priority', e.target.value)}
+                className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50">
+                {PRIORITIES.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-600 text-warm-500 mb-1 block">Fornitore</label>
+              <input value={form.supplier} onChange={e => set('supplier', e.target.value)}
+                placeholder="Nome fornitore"
+                className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50"/>
+            </div>
+            <div>
+              <label className="text-xs font-600 text-warm-500 mb-1 block">Formato / Peso</label>
+              <input value={form.weight_format} onChange={e => set('weight_format', e.target.value)}
+                placeholder="Es: 200g, 6x100g"
+                className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50"/>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-600 text-warm-500 mb-1 block">Costo unitario (€)</label>
+            <input type="number" step="0.01" value={form.cost_per_unit} onChange={e => set('cost_per_unit', e.target.value)}
+              placeholder="0.00"
+              className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50"/>
+          </div>
+
+          <div>
+            <label className="text-xs font-600 text-warm-500 mb-1 block">Descrizione</label>
+            <textarea value={form.description} onChange={e => set('description', e.target.value)} rows={2}
+              className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50 resize-none"/>
+          </div>
+
+          <div>
+            <label className="text-xs font-600 text-warm-500 mb-1 block">Note interne</label>
+            <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3}
+              placeholder="Aggiornamenti, ostacoli, decisioni..."
+              className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50 resize-none"/>
+          </div>
+
+        </form>
+
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-warm-100 flex gap-2 flex-shrink-0">
+          {!isNew && profile?.role === 'admin' && (
+            <button onClick={del} disabled={deleting}
+              className="text-sm text-red-500 hover:text-red-700 font-500 border border-red-200 hover:border-red-300 rounded-xl px-4 py-2 transition-colors disabled:opacity-40">
+              {deleting ? '...' : 'Elimina'}
+            </button>
+          )}
+          <div className="flex-1"/>
+          <button onClick={onClose} className="text-sm text-warm-500 hover:text-warm-700 font-500 border border-warm-200 rounded-xl px-4 py-2 transition-colors">
+            Annulla
+          </button>
+          <button form="proj-form" type="submit" disabled={saving}
+            className="bg-brand-500 hover:bg-brand-600 text-white text-sm font-600 rounded-xl px-5 py-2 transition-colors disabled:opacity-40">
+            {saving ? 'Salvo...' : isNew ? 'Crea' : 'Salva'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Card progetto ─────────────────────────────────────────────────────
+function SortableCard({ project, onClick }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: project.id })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
-
-  const tasks = project.project_tasks || []
-  const done = tasks.filter(t => t.status === 'done').length
-  const progress = tasks.length ? Math.round(done / tasks.length * 100) : 0
-  const s = STATUS[project.status] || STATUS.active
+  const pri = priMap[project.priority]
 
   return (
     <div ref={setNodeRef} style={style} className="relative group/card">
-      {/* Drag handle */}
-      <div
-        {...attributes}
-        {...listeners}
-        className="absolute top-3 right-3 cursor-grab active:cursor-grabbing opacity-0 group-hover/card:opacity-100 transition-opacity touch-none z-10"
-      >
-        <svg viewBox="0 0 8 14" fill="currentColor" className="w-2.5 h-3.5 text-warm-300">
-          <circle cx="2" cy="2" r="1.2"/><circle cx="6" cy="2" r="1.2"/>
-          <circle cx="2" cy="7" r="1.2"/><circle cx="6" cy="7" r="1.2"/>
-          <circle cx="2" cy="12" r="1.2"/><circle cx="6" cy="12" r="1.2"/>
-        </svg>
-      </div>
-
-      <div
-        onClick={() => onOpen(project.id)}
-        className="bg-white border border-warm-200 rounded-2xl p-5 cursor-pointer hover:border-warm-300 hover:shadow-md transition-all"
-      >
-        <div className="flex items-start gap-3 mb-4">
-          <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${project.status === 'active' ? 'bg-brand-50' : project.status === 'on_hold' ? 'bg-amber-50' : 'bg-blue-50'}`}>
-            <svg viewBox="0 0 20 20" fill="none" stroke={project.status === 'active' ? '#1D9E75' : project.status === 'on_hold' ? '#D97706' : '#3B82F6'} strokeWidth="1.6" className="w-4.5 h-4.5">
-              <path d="M9 5H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h0a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2"/>
-            </svg>
-          </div>
-          <div className="flex-1 min-w-0 pr-4">
-            <div className="text-sm font-700 text-warm-900 leading-tight">{project.name}</div>
-          </div>
-          <div className={`w-2 h-2 rounded-full flex-shrink-0 mt-1 ${PRI_DOT[project.priority] || 'bg-warm-200'}`} />
-        </div>
-
-        {tasks.length > 0 && (
-          <div className="mb-3">
-            <div className="h-1 bg-warm-100 rounded-full overflow-hidden">
-              <div className="h-full bg-brand-500 rounded-full transition-all" style={{ width: `${progress}%` }} />
-            </div>
-            <div className="text-xs text-warm-400 mt-1">{done}/{tasks.length} task · {progress}%</div>
-          </div>
-        )}
-
-        <div className="flex items-center gap-2">
-          <span className={`text-2xs font-600 px-2 py-0.5 rounded-full ${s.cls}`}>{s.label}</span>
-          {project.due_date && <span className="text-xs text-warm-400 ml-auto">{new Date(project.due_date).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}</span>}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-export default function Projects() {
-  const { profile } = useApp()
-  const [projects, setProjects] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [selected, setSelected] = useState(null)
-  const [projectDetail, setProjectDetail] = useState(null)
-  const [tab, setTab] = useState('overview')
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
-  )
-
-  const load = () => api('/api/projects').then(d => setProjects(d.projects || [])).catch(() => {}).finally(() => setLoading(false))
-  useEffect(() => { load() }, [])
-
-  async function openProject(id) {
-    setSelected(id); setTab('overview')
-    const d = await api('/api/projects/' + id)
-    setProjectDetail(d.project)
-  }
-
-  async function newProject() {
-    const name = prompt('Nome del progetto:')
-    if (!name) return
-    const { project } = await api('/api/projects', { method: 'POST', body: { name, priority: 'medium', status: 'active', member_ids: [profile.id] } })
-    await load()
-    openProject(project.id)
-  }
-
-  function handleDragEnd({ active, over }) {
-    if (!over || active.id === over.id) return
-    setProjects(prev => {
-      const oldIndex = prev.findIndex(p => p.id === active.id)
-      const newIndex = prev.findIndex(p => p.id === over.id)
-      return arrayMove(prev, oldIndex, newIndex)
-    })
-  }
-
-  return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <div className="px-6 py-4 bg-white border-b border-warm-200 flex items-center justify-between flex-shrink-0">
-        <div>
-          <h1 className="text-base font-bold tracking-tight text-warm-900">Progetti</h1>
-          <p className="text-xs text-warm-400 mt-0.5">{projects.length} progetti</p>
-        </div>
-        {profile?.role !== 'agent' && (
-          <button onClick={newProject} className="bg-brand-500 hover:bg-brand-600 text-white text-sm font-600 rounded-lg px-4 py-2 transition-colors flex items-center gap-1.5">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5"><path d="M8 3v10M3 8h10"/></svg>
-            Nuovo
-          </button>
-        )}
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-5 scrollbar-none">
-        {loading && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">{[1,2,3].map(i => <div key={i} className="h-36 bg-white rounded-2xl border border-warm-200 animate-pulse"/>)}</div>}
-
-        {!loading && projects.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-warm-300 gap-2">
-            <p className="text-sm">Nessun progetto. Creane uno!</p>
-          </div>
-        )}
-
-        {!loading && projects.length > 0 && (
-          <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-              {[
-                { n: projects.length, l: 'Totali' },
-                { n: projects.filter(p => p.status === 'active').length, l: 'Attivi' },
-                { n: projects.filter(p => p.priority === 'urgent').length, l: 'Urgenti', red: true },
-                { n: projects.filter(p => p.status === 'completed').length, l: 'Completati' },
-              ].map(({ n, l, red }) => (
-                <div key={l} className="bg-white border border-warm-200 rounded-xl p-4 text-center">
-                  <div className={`text-2xl font-700 tracking-tight ${red && n > 0 ? 'text-red-500' : 'text-warm-900'}`}>{n}</div>
-                  <div className="text-xs text-warm-400 mt-0.5">{l}</div>
-                </div>
-              ))}
-            </div>
-
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={projects.map(p => p.id)} strategy={rectSortingStrategy}>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {projects.map(p => (
-                    <SortableProjectCard key={p.id} project={p} onOpen={openProject} />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
-          </>
-        )}
-      </div>
-
-      {/* Project modal */}
-      {selected && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-end md:items-center justify-center p-0 md:p-4">
-          <div className="bg-white rounded-t-2xl md:rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">
-            <div className="flex items-center gap-3 px-5 py-4 border-b border-warm-100 flex-shrink-0">
-              <div className="flex-1 font-700 text-warm-900">{projectDetail?.name || '...'}</div>
-              <button onClick={() => { setSelected(null); setProjectDetail(null) }} className="text-warm-300 hover:text-warm-600">
-                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4"><path d="M3 3l10 10M13 3L3 13"/></svg>
-              </button>
-            </div>
-
-            <div className="flex border-b border-warm-100 flex-shrink-0 overflow-x-auto scrollbar-none">
-              {['overview', 'tasks', 'notes', 'milestones'].map(t => (
-                <button key={t} onClick={() => setTab(t)}
-                  className={`px-5 py-3 text-sm font-600 capitalize whitespace-nowrap border-b-2 transition-colors ${tab === t ? 'border-brand-500 text-brand-600' : 'border-transparent text-warm-400 hover:text-warm-700'}`}>
-                  {t === 'overview' ? 'Panoramica' : t === 'tasks' ? 'Task' : t === 'notes' ? 'Note' : 'Milestone'}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-5 scrollbar-none">
-              {!projectDetail && <div className="flex justify-center py-10"><div className="w-5 h-5 border-2 border-warm-200 border-t-brand-500 rounded-full animate-spin"/></div>}
-              {projectDetail && tab === 'overview' && <ProjectOverview p={projectDetail} />}
-              {projectDetail && tab === 'tasks' && <ProjectTasks tasks={projectDetail.project_tasks || []} />}
-              {projectDetail && tab === 'notes' && <ProjectNotes notes={projectDetail.project_notes || []} />}
-              {projectDetail && tab === 'milestones' && <ProjectMilestones ms={projectDetail.milestones || []} projectId={selected} refresh={() => openProject(selected)} />}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function ProjectOverview({ p }) {
-  const tasks = p.project_tasks || [], ms = p.milestones || []
-  const done = tasks.filter(t => t.status === 'done').length
-  const progress = tasks.length ? Math.round(done / tasks.length * 100) : 0
-  const s = STATUS[p.status] || STATUS.active
-  return (
-    <div className="space-y-4">
-      <p className="text-sm text-warm-600 leading-relaxed">{p.description || 'Nessuna descrizione'}</p>
-      <div className="flex items-center gap-2">
-        <span className={`text-xs font-600 px-2.5 py-1 rounded-full ${s.cls}`}>{s.label}</span>
-        {p.due_date && <span className="text-xs text-warm-400">Scadenza: {new Date(p.due_date).toLocaleDateString('it-IT')}</span>}
-      </div>
-      {tasks.length > 0 && <div className="h-1.5 bg-warm-100 rounded-full overflow-hidden"><div className="h-full bg-brand-500 rounded-full" style={{ width: `${progress}%` }}/></div>}
-      <div className="grid grid-cols-3 gap-3">
-        {[{ n: tasks.length, l: 'Task totali' }, { n: done, l: 'Completati' }, { n: `${ms.filter(m => m.completed).length}/${ms.length}`, l: 'Milestone' }].map(({ n, l }) => (
-          <div key={l} className="bg-warm-50 border border-warm-200 rounded-xl p-3 text-center">
-            <div className="text-lg font-700 text-warm-900">{n}</div>
-            <div className="text-xs text-warm-400">{l}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function SortableProjectTask({ task }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
-  return (
-    <div ref={setNodeRef} style={style} className={`flex items-center gap-3 p-3 rounded-xl border group/ptask ${task.status === 'done' ? 'bg-warm-50 border-warm-100' : 'bg-white border-warm-200'}`}>
-      <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing opacity-0 group-hover/ptask:opacity-100 transition-opacity touch-none flex-shrink-0">
+      <div {...attributes} {...listeners}
+        className="absolute top-2 right-2 cursor-grab active:cursor-grabbing opacity-0 group-hover/card:opacity-100 transition-opacity touch-none z-10">
         <svg viewBox="0 0 8 14" fill="currentColor" className="w-2 h-3 text-warm-300">
           <circle cx="2" cy="2" r="1.2"/><circle cx="6" cy="2" r="1.2"/>
           <circle cx="2" cy="7" r="1.2"/><circle cx="6" cy="7" r="1.2"/>
           <circle cx="2" cy="12" r="1.2"/><circle cx="6" cy="12" r="1.2"/>
         </svg>
       </div>
-      <div className={`w-3.5 h-3.5 rounded border-2 flex-shrink-0 ${task.status === 'done' ? 'bg-brand-500 border-brand-500' : 'border-warm-300'}`}/>
-      <span className={`flex-1 text-sm ${task.status === 'done' ? 'text-warm-400 line-through' : 'text-warm-900 font-500'}`}>{task.title}</span>
-      {task.assignee && <span className="text-xs text-warm-400">{task.assignee.full_name?.split(' ')[0]}</span>}
+      <div onClick={onClick}
+        className="bg-white rounded-xl border border-warm-200 p-3 cursor-pointer hover:border-brand-300 hover:shadow-sm transition-all">
+        <div className="font-600 text-sm text-warm-900 mb-2 pr-4">{project.name}</div>
+        <div className="flex flex-wrap gap-1 mb-2">
+          {project.market && (
+            <span className="text-2xs font-600 px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700">{project.market}</span>
+          )}
+          {pri && (
+            <span className={`text-2xs font-600 px-1.5 py-0.5 rounded-full ${pri.cls}`}>{pri.label}</span>
+          )}
+        </div>
+        {project.supplier && (
+          <div className="text-xs text-warm-500 truncate">📦 {project.supplier}</div>
+        )}
+        {project.weight_format && (
+          <div className="text-xs text-warm-400">{project.weight_format}</div>
+        )}
+        {project.cost_per_unit && (
+          <div className="text-xs text-warm-500 mt-1 font-600">€ {Number(project.cost_per_unit).toFixed(2)}/pz</div>
+        )}
+      </div>
     </div>
   )
 }
 
-function ProjectTasks({ tasks: initialTasks }) {
-  const [tasks, setTasks] = useState(initialTasks)
+// ── Vista principale ──────────────────────────────────────────────────
+export default function Projects() {
+  const { profile } = useApp()
+  const [projects, setProjects] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [modal, setModal] = useState(null) // null | 'new' | project object
+  const [filterMarket, setFilterMarket] = useState('')
+  const [filterPri, setFilterPri] = useState('')
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
   )
-  function handleDragEnd({ active, over }) {
+
+  const load = () => api('/api/projects')
+    .then(d => setProjects(d.projects || []))
+    .catch(() => {})
+    .finally(() => setLoading(false))
+
+  useEffect(() => { load() }, [])
+
+  const filtered = projects.filter(p => {
+    if (filterMarket && p.market !== filterMarket) return false
+    if (filterPri && p.priority !== filterPri) return false
+    return true
+  })
+
+  function handleSaved(project, isNew) {
+    if (isNew) setProjects(prev => [project, ...prev])
+    else setProjects(prev => prev.map(p => p.id === project.id ? project : p))
+  }
+
+  function handleDeleted(id) {
+    setProjects(prev => prev.filter(p => p.id !== id))
+  }
+
+  function handleDragEnd(stageKey, { active, over }) {
     if (!over || active.id === over.id) return
-    setTasks(prev => {
-      const oldIndex = prev.findIndex(t => t.id === active.id)
-      const newIndex = prev.findIndex(t => t.id === over.id)
-      return arrayMove(prev, oldIndex, newIndex)
+    setProjects(prev => {
+      const stageItems = prev.filter(p => p.stage === stageKey)
+      const oldIdx = stageItems.findIndex(p => p.id === active.id)
+      const newIdx = stageItems.findIndex(p => p.id === over.id)
+      const reordered = arrayMove(stageItems, oldIdx, newIdx)
+      const rest = prev.filter(p => p.stage !== stageKey)
+      return [...rest, ...reordered]
     })
   }
-  return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-      <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
-        <div className="space-y-2">
-          {tasks.length === 0 && <p className="text-sm text-warm-400">Nessun task</p>}
-          {tasks.map(t => <SortableProjectTask key={t.id} task={t} />)}
-        </div>
-      </SortableContext>
-    </DndContext>
-  )
-}
 
-function SortableNote({ note, typeColors }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: note.id })
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
   return (
-    <div ref={setNodeRef} style={style} className="bg-white border border-warm-200 rounded-xl p-4 group/note">
-      <div className="flex items-center gap-2 mb-2">
-        <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing opacity-0 group-hover/note:opacity-100 transition-opacity touch-none flex-shrink-0">
-          <svg viewBox="0 0 8 14" fill="currentColor" className="w-2 h-3 text-warm-300">
-            <circle cx="2" cy="2" r="1.2"/><circle cx="6" cy="2" r="1.2"/>
-            <circle cx="2" cy="7" r="1.2"/><circle cx="6" cy="7" r="1.2"/>
-            <circle cx="2" cy="12" r="1.2"/><circle cx="6" cy="12" r="1.2"/>
-          </svg>
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Header */}
+      <div className="px-6 py-4 bg-white border-b border-warm-200 flex items-center gap-3 flex-shrink-0">
+        <div className="flex-1">
+          <h1 className="text-base font-bold tracking-tight text-warm-900">Progetti</h1>
+          <p className="text-xs text-warm-400 mt-0.5">{filtered.length} prodotti in lavorazione</p>
         </div>
-        <span className="text-xs font-700 text-warm-900">{note.author?.full_name}</span>
-        <span className={`text-2xs font-600 px-2 py-0.5 rounded-full ${typeColors[note.note_type] || ''}`}>{note.note_type}</span>
-        <span className="text-2xs text-warm-400 ml-auto">{new Date(note.created_at).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}</span>
+        <div className="flex gap-2">
+          <select value={filterMarket} onChange={e => setFilterMarket(e.target.value)}
+            className="text-xs border border-warm-200 rounded-lg px-2 py-1.5 bg-white text-warm-700 focus:outline-none focus:border-brand-400">
+            <option value="">Mercato</option>
+            {MARKETS.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+          <select value={filterPri} onChange={e => setFilterPri(e.target.value)}
+            className="text-xs border border-warm-200 rounded-lg px-2 py-1.5 bg-white text-warm-700 focus:outline-none focus:border-brand-400">
+            <option value="">Priorità</option>
+            {PRIORITIES.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+          </select>
+        </div>
+        {['admin', 'manager'].includes(profile?.role) && (
+          <button onClick={() => setModal('new')}
+            className="bg-brand-500 hover:bg-brand-600 text-white text-sm font-600 rounded-lg px-4 py-2 transition-colors flex items-center gap-1.5 flex-shrink-0">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5"><path d="M8 3v10M3 8h10"/></svg>
+            Nuovo
+          </button>
+        )}
       </div>
-      <p className="text-sm text-warm-700 leading-relaxed">{note.content}</p>
-      {note.ai_summary && <p className="text-xs text-warm-500 border-l-2 border-brand-200 pl-3 mt-2 leading-relaxed">{note.ai_summary}</p>}
-    </div>
-  )
-}
 
-function ProjectNotes({ notes: initialNotes }) {
-  const [notes, setNotes] = useState(initialNotes)
-  const typeColors = { update: 'bg-blue-50 text-blue-700', meeting: 'bg-brand-50 text-brand-600', call: 'bg-purple-50 text-purple-700', decision: 'bg-amber-50 text-amber-700', risk: 'bg-red-50 text-red-600' }
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
-  )
-  function handleDragEnd({ active, over }) {
-    if (!over || active.id === over.id) return
-    setNotes(prev => {
-      const oldIndex = prev.findIndex(n => n.id === active.id)
-      const newIndex = prev.findIndex(n => n.id === over.id)
-      return arrayMove(prev, oldIndex, newIndex)
-    })
-  }
-  return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-      <SortableContext items={notes.map(n => n.id)} strategy={verticalListSortingStrategy}>
-        <div className="space-y-3">
-          {notes.length === 0 && <p className="text-sm text-warm-400">Nessuna nota</p>}
-          {notes.map(n => <SortableNote key={n.id} note={n} typeColors={typeColors} />)}
-        </div>
-      </SortableContext>
-    </DndContext>
-  )
-}
+      {/* Kanban */}
+      <div className="flex flex-1 overflow-x-auto scrollbar-none bg-warm-50">
+        {STAGES.map(stage => {
+          const cards = filtered.filter(p => p.stage === stage.key)
+          return (
+            <div key={stage.key} className="min-w-[220px] flex-1 flex flex-col border-r border-warm-200 last:border-r-0">
+              {/* Colonna header */}
+              <div className="px-3 py-3 bg-white border-b border-warm-200 flex items-center gap-2 flex-shrink-0">
+                <div className={`w-1.5 h-1.5 rounded-full ${stage.dot}`}/>
+                <span className={`text-xs font-700 uppercase tracking-widest ${stage.color}`}>{stage.label}</span>
+                <span className="ml-auto text-xs font-600 text-warm-400 bg-warm-100 px-2 py-0.5 rounded-full">{cards.length}</span>
+              </div>
 
-function ProjectMilestones({ ms, projectId, refresh }) {
-  const [title, setTitle] = useState('')
-  const [date, setDate] = useState('')
-
-  async function add(e) {
-    e.preventDefault()
-    if (!title) return
-    await api(`/api/projects/${projectId}/milestones`, { method: 'POST', body: { title, due_date: date || undefined } })
-    setTitle(''); setDate(''); refresh()
-  }
-
-  async function toggle(id, completed) {
-    await api(`/api/projects/${projectId}/milestones/${id}`, { method: 'PATCH', body: { completed } })
-    refresh()
-  }
-
-  return (
-    <div>
-      <form onSubmit={add} className="flex gap-2 mb-4 flex-wrap">
-        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Titolo milestone..."
-          className="flex-1 min-w-32 text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50"/>
-        <input type="date" value={date} onChange={e => setDate(e.target.value)}
-          className="text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50"/>
-        <button type="submit" className="bg-brand-500 text-white text-sm font-600 rounded-lg px-3 py-2 hover:bg-brand-600 transition-colors">+ Aggiungi</button>
-      </form>
-      <div className="space-y-2">
-        {ms.length === 0 && <p className="text-sm text-warm-400">Nessuna milestone</p>}
-        {ms.map(m => (
-          <div key={m.id} className="flex items-center gap-3 p-3 bg-warm-50 border border-warm-200 rounded-xl">
-            <button onClick={() => toggle(m.id, !m.completed)}
-              className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all ${m.completed ? 'bg-brand-500 border-brand-500' : 'border-warm-300 hover:border-brand-400'}`}>
-              {m.completed && <svg viewBox="0 0 10 10" fill="none" className="w-2.5 h-2.5"><path d="M2 5l2.5 2.5L8 3" stroke="#fff" strokeWidth="1.5"/></svg>}
-            </button>
-            <span className={`flex-1 text-sm font-500 ${m.completed ? 'text-warm-400 line-through' : 'text-warm-900'}`}>{m.title}</span>
-            {m.due_date && <span className="text-xs text-warm-400">{new Date(m.due_date + 'T12:00:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}</span>}
-          </div>
-        ))}
+              {/* Cards */}
+              <div className="flex-1 overflow-y-auto p-2 scrollbar-none">
+                {loading && [1,2].map(i => (
+                  <div key={i} className="bg-white rounded-xl border border-warm-200 p-3 mb-2 animate-pulse h-20"/>
+                ))}
+                {!loading && (
+                  <DndContext sensors={sensors} collisionDetection={closestCenter}
+                    onDragEnd={e => handleDragEnd(stage.key, e)}>
+                    <SortableContext items={cards.map(p => p.id)} strategy={verticalListSortingStrategy}>
+                      <div className="space-y-2">
+                        {cards.map(p => (
+                          <SortableCard key={p.id} project={p} onClick={() => setModal(p)} />
+                        ))}
+                        {cards.length === 0 && (
+                          <div className="text-xs text-warm-300 text-center py-8">Nessun progetto</div>
+                        )}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
+                )}
+              </div>
+            </div>
+          )
+        })}
       </div>
+
+      {/* Modal */}
+      {modal && (
+        <ProjectModal
+          project={modal === 'new' ? null : modal}
+          onClose={() => setModal(null)}
+          onSaved={handleSaved}
+          onDeleted={handleDeleted}
+        />
+      )}
     </div>
   )
 }

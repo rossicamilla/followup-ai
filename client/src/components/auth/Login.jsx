@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 
 export default function Login() {
-  const [mode, setMode] = useState('login')
+  const [mode] = useState('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
@@ -48,12 +48,8 @@ export default function Login() {
 
         {/* Card */}
         <div className="bg-white rounded-2xl p-8 shadow-2xl shadow-black/30">
-          <h1 className="text-lg font-bold tracking-tight text-warm-900 mb-1">
-            {mode === 'login' ? 'Accedi al tuo account' : 'Crea un account'}
-          </h1>
-          <p className="text-sm text-warm-400 mb-6">
-            {mode === 'login' ? 'Bentornato 👋' : 'Unisciti al team Confluencia'}
-          </p>
+          <h1 className="text-lg font-bold tracking-tight text-warm-900 mb-1">Accedi al tuo account</h1>
+          <p className="text-sm text-warm-400 mb-6">Bentornato 👋</p>
 
           {error && (
             <div className="bg-red-50 border border-red-100 text-red-700 rounded-lg px-4 py-3 text-sm mb-4">
@@ -97,12 +93,8 @@ export default function Login() {
             </button>
           </form>
 
-          <p className="text-center text-sm text-warm-400 mt-5">
-            {mode === 'login' ? 'Nuovo?' : 'Hai già un account?'}{' '}
-            <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setMsg('') }}
-              className="text-brand-500 font-semibold hover:text-brand-600">
-              {mode === 'login' ? 'Crea account' : 'Accedi'}
-            </button>
+          <p className="text-center text-xs text-warm-300 mt-5">
+            Accesso solo su invito. Contatta l'amministratore.
           </p>
         </div>
       </div>
