@@ -6,6 +6,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { requireAuth } = require('../middleware/auth');
 const { createClient } = require('@supabase/supabase-js');
 const { syncTaskToOutlook, updateOutlookEvent, getValidToken } = require('../services/outlookSync');
+const { encrypt } = require('../services/tokenCrypto');
 
 // In-memory store for OAuth state nonces: nonce -> { userId, expiresAt }
 // TTL of 10 minutes is sufficient for the OAuth redirect round-trip.
@@ -83,13 +84,13 @@ router.get('/callback', async (req, res) => {
 
     const { access_token, refresh_token } = tokenResponse.data;
 
-    // Salva i token in Supabase
+    // Cifra i token prima di salvarli (AES-256-GCM)
     const { error } = await supabase
       .from('outlook_tokens')
       .upsert({
         user_id: userId,
-        access_token,
-        refresh_token,
+        access_token: encrypt(access_token),
+        refresh_token: encrypt(refresh_token),
         expires_at: new Date(Date.now() + 3600 * 1000).toISOString()
       }, { onConflict: 'user_id' });
 

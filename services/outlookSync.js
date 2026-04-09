@@ -1,5 +1,6 @@
 const axios = require('axios');
 const { createClient } = require('@supabase/supabase-js');
+const { encrypt, decrypt, isEncrypted } = require('./tokenCrypto');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -19,24 +20,31 @@ async function getValidToken(userId) {
 
   if (error) throw new Error('Token Outlook non trovato — collega prima il calendario');
 
+  // Decifra i token letti dal DB (gestisce anche token non ancora cifrati per retrocompatibilità)
+  const storedRefresh = tokenData.refresh_token;
+  const decryptedRefresh = isEncrypted(storedRefresh) ? decrypt(storedRefresh) : storedRefresh;
+  const storedAccess = tokenData.access_token;
+  const decryptedAccess = isEncrypted(storedAccess) ? decrypt(storedAccess) : storedAccess;
+
   if (new Date(tokenData.expires_at) < new Date()) {
     const refreshResponse = await axios.post(
       `https://login.microsoftonline.com/${MICROSOFT_TENANT}/oauth2/v2.0/token`,
       new URLSearchParams({
         client_id: MICROSOFT_CLIENT_ID,
         client_secret: MICROSOFT_CLIENT_SECRET,
-        refresh_token: tokenData.refresh_token,
+        refresh_token: decryptedRefresh,
         grant_type: 'refresh_token',
         scope: 'https://graph.microsoft.com/Calendars.ReadWrite offline_access'
       })
     );
 
     const { access_token, refresh_token } = refreshResponse.data;
+    // Salva i nuovi token cifrati
     await supabase
       .from('outlook_tokens')
       .update({
-        access_token,
-        refresh_token,
+        access_token: encrypt(access_token),
+        refresh_token: encrypt(refresh_token),
         expires_at: new Date(Date.now() + 3600 * 1000).toISOString()
       })
       .eq('user_id', userId);
@@ -44,7 +52,7 @@ async function getValidToken(userId) {
     return access_token;
   }
 
-  return tokenData.access_token;
+  return decryptedAccess;
 }
 
 async function createOutlookEvent(token, task) {
