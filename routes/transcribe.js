@@ -10,7 +10,9 @@ const upload = multer({
   limits: { fileSize: 25 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowed = ['audio/webm', 'audio/mp4', 'audio/mpeg', 'audio/wav', 'audio/ogg', 'video/webm'];
-    cb(null, allowed.includes(file.mimetype) || file.originalname.match(/\.(webm|mp4|mp3|wav|ogg|m4a)$/i));
+    const mimeOk = allowed.some(a => file.mimetype.startsWith(a));
+    const extOk = /\.(webm|mp4|mp3|wav|ogg|m4a)$/i.test(file.originalname);
+    cb(null, mimeOk || extOk || file.mimetype.startsWith('audio/'));
   }
 });
 
