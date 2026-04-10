@@ -1,47 +1,48 @@
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../../lib/api'
 import { useApp } from '../../App'
-import {
-  DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors,
-} from '@dnd-kit/core'
-import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 
 // ── Costanti ──────────────────────────────────────────────────────────────────
 
-// Le 2 macro-colonne del kanban
 const COLUMNS = [
   {
-    key: 'sviluppi',
-    label: 'Sviluppi',
-    stages: ['idea', 'sviluppo', 'test'],
+    key: 'idea',
+    label: 'Idea',
+    color: 'text-slate-600',
+    dot: 'bg-slate-400',
+    headerBg: 'bg-slate-50',
+    border: 'border-slate-200',
+    cardBorder: 'border-l-slate-400',
+    emptyColor: 'text-slate-400',
+    nextStage: 'sviluppo',
+    nextLabel: 'Sviluppo →',
+  },
+  {
+    key: 'sviluppo',
+    label: 'Sviluppo',
     color: 'text-blue-700',
     dot: 'bg-blue-500',
     headerBg: 'bg-blue-50',
     border: 'border-blue-200',
     cardBorder: 'border-l-blue-400',
     emptyColor: 'text-blue-400',
+    nextStage: 'pronto',
+    nextLabel: 'Pronto →',
   },
   {
-    key: 'pronti',
-    label: 'Pronti',
-    stages: ['pronto'],
+    key: 'pronto',
+    label: 'Pronto',
     color: 'text-emerald-700',
     dot: 'bg-emerald-500',
     headerBg: 'bg-emerald-50',
     border: 'border-emerald-200',
     cardBorder: 'border-l-emerald-500',
     emptyColor: 'text-emerald-400',
+    nextStage: null,
+    nextLabel: 'Proponi →',
   },
 ]
-
-// Badge per sotto-stage (dettaglio nella card)
-const STAGE_BADGE = {
-  idea:     { label: 'Idea',     cls: 'bg-slate-100 text-slate-500' },
-  sviluppo: { label: 'Sviluppo', cls: 'bg-blue-100 text-blue-600' },
-  test:     { label: 'Test',     cls: 'bg-amber-100 text-amber-700' },
-  pronto:   { label: 'Pronto',   cls: 'bg-emerald-100 text-emerald-700' },
-}
+const colMap = Object.fromEntries(COLUMNS.map(c => [c.key, c]))
 
 const MARKETS = ['Retail', 'Horeca', 'Export', 'Interno']
 const MARKET_COLORS = {
@@ -50,72 +51,83 @@ const MARKET_COLORS = {
   Export:  'bg-cyan-100 text-cyan-700',
   Interno: 'bg-warm-100 text-warm-600',
 }
+const PRI_COLORS = {
+  alta:  'bg-red-100 text-red-600',
+  media: 'bg-amber-100 text-amber-700',
+  bassa: 'bg-warm-100 text-warm-500',
+}
+const ORIGIN_COLORS = {
+  cliente: 'bg-purple-100 text-purple-700',
+  interna: 'bg-teal-100 text-teal-700',
+}
+const ORIGIN_LABELS = { cliente: 'Richiesta cliente', interna: 'Opportunità interna' }
 
-const PRIORITIES = [
-  { key: 'bassa', label: 'Bassa', cls: 'bg-warm-100 text-warm-500',   dot: 'bg-warm-400' },
-  { key: 'media', label: 'Media', cls: 'bg-amber-100 text-amber-700', dot: 'bg-amber-400' },
-  { key: 'alta',  label: 'Alta',  cls: 'bg-red-100 text-red-600',     dot: 'bg-red-500'  },
+const DEFAULT_DEV_STEPS = [
+  { id: '1', title: 'Ricerca fornitore',     completed: false },
+  { id: '2', title: 'Campione ricevuto',     completed: false },
+  { id: '3', title: 'Valutazione qualità',   completed: false },
+  { id: '4', title: 'Analisi costo',         completed: false },
+  { id: '5', title: 'Etichetta / Packaging', completed: false },
+  { id: '6', title: 'Approvazione finale',   completed: false },
 ]
-const priMap = Object.fromEntries(PRIORITIES.map(p => [p.key, p]))
 
-// ── Badge components ──────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-function StageBadge({ stage }) {
-  const s = STAGE_BADGE[stage]
-  if (!s) return null
-  return <span className={`text-2xs font-600 px-1.5 py-0.5 rounded ${s.cls}`}>{s.label}</span>
+function MarketBadge({ market }) {
+  if (!market) return null
+  return <span className={`text-2xs font-700 px-2 py-0.5 rounded-full ${MARKET_COLORS[market] || 'bg-warm-100 text-warm-600'}`}>{market}</span>
 }
 
 function PriBadge({ priority }) {
-  const p = priMap[priority]
-  if (!p) return null
-  return <span className={`inline-flex items-center gap-1 text-2xs font-700 px-2 py-0.5 rounded-full ${p.cls}`}>
-    <span className={`w-1 h-1 rounded-full ${p.dot}`}/>
-    {p.label}
-  </span>
+  if (!priority) return null
+  return <span className={`text-2xs font-700 px-2 py-0.5 rounded-full ${PRI_COLORS[priority]}`}>{priority}</span>
 }
 
-function MarketBadge({ market }) {
-  const cls = MARKET_COLORS[market] || 'bg-warm-100 text-warm-600'
-  return <span className={`text-2xs font-700 px-2 py-0.5 rounded-full ${cls}`}>{market}</span>
+function OriginBadge({ origin }) {
+  if (!origin) return null
+  return <span className={`text-2xs font-700 px-2 py-0.5 rounded-full ${ORIGIN_COLORS[origin]}`}>{ORIGIN_LABELS[origin]}</span>
 }
 
-// ── Modal crea/modifica progetto ──────────────────────────────────────────────
-function ProjectModal({ project, onClose, onSaved, onDeleted, onProponi }) {
+function StepProgress({ steps }) {
+  if (!steps?.length) return null
+  const done = steps.filter(s => s.completed).length
+  const pct = Math.round(done / steps.length * 100)
+  return (
+    <div className="mt-2">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-2xs text-warm-400">{done}/{steps.length} step</span>
+        <span className="text-2xs font-700 text-blue-600">{pct}%</span>
+      </div>
+      <div className="h-1 bg-warm-100 rounded-full overflow-hidden">
+        <div className="h-full bg-blue-400 rounded-full transition-all" style={{ width: `${pct}%` }}/>
+      </div>
+    </div>
+  )
+}
+
+// ── Modal Idea ────────────────────────────────────────────────────────────────
+function IdeaModal({ project, onClose, onSaved, onDeleted }) {
   const { profile } = useApp()
   const isNew = !project
   const [form, setForm] = useState({
-    name: project?.name || '',
-    description: project?.description || '',
-    market: project?.market || 'Retail',
-    stage: project?.stage || 'idea',
-    priority: project?.priority || 'media',
-    supplier: project?.supplier || '',
+    name:         project?.name || '',
+    market:       project?.market || 'Retail',
+    priority:     project?.priority || 'media',
+    origin:       project?.origin || '',
+    supplier:     project?.supplier || '',
     weight_format: project?.weight_format || '',
-    cost_per_unit: project?.cost_per_unit || '',
-    country_code: project?.country_code || '',
-    country: project?.country || '',
-    client: project?.client || '',
-    notes: project?.notes || '',
+    client:       project?.client || '',
+    notes:        project?.notes || '',
   })
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
-
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   async function save(e) {
     e.preventDefault()
     setSaving(true)
     try {
-      const body = {
-        ...form,
-        cost_per_unit: form.cost_per_unit ? parseFloat(form.cost_per_unit) : null,
-        supplier: form.supplier || null,
-        weight_format: form.weight_format || null,
-        country_code: form.country_code || null,
-        country: form.country || null,
-        client: form.client || null,
-      }
+      const body = { ...form, stage: 'idea', supplier: form.supplier || null, weight_format: form.weight_format || null, client: form.client || null, origin: form.origin || null }
       const d = isNew
         ? await api('/api/projects', { method: 'POST', body })
         : await api(`/api/projects/${project.id}`, { method: 'PATCH', body })
@@ -126,7 +138,7 @@ function ProjectModal({ project, onClose, onSaved, onDeleted, onProponi }) {
   }
 
   async function del() {
-    if (!confirm(`Eliminare il progetto "${project.name}"?`)) return
+    if (!confirm(`Eliminare "${project.name}"?`)) return
     setDeleting(true)
     try {
       await api(`/api/projects/${project.id}`, { method: 'DELETE' })
@@ -136,60 +148,48 @@ function ProjectModal({ project, onClose, onSaved, onDeleted, onProponi }) {
     setDeleting(false)
   }
 
-  const stageBg = {
-    idea: 'bg-slate-50', sviluppo: 'bg-blue-50', test: 'bg-amber-50', pronto: 'bg-emerald-50'
-  }
-
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-end md:items-center justify-center p-0 md:p-4"
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-white rounded-t-2xl md:rounded-2xl w-full max-w-lg max-h-[92vh] flex flex-col shadow-2xl">
-
-        <div className={`flex items-center gap-3 px-5 py-4 border-b rounded-t-2xl md:rounded-t-2xl ${stageBg[form.stage] || 'bg-white'} border-warm-100 flex-shrink-0`}>
-          <div className="flex-1 min-w-0">
-            <div className="font-700 text-warm-900 text-sm truncate">
-              {isNew ? 'Nuovo progetto' : form.name}
-            </div>
-            {!isNew && (
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <StageBadge stage={form.stage}/>
-                <PriBadge priority={form.priority}/>
-              </div>
-            )}
-          </div>
-          {/* Bottone Proponi — solo su progetti pronti esistenti */}
-          {!isNew && form.stage === 'pronto' && onProponi && (
-            <button onClick={() => { onClose(); onProponi(project) }}
-              className="text-xs font-600 bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3"><path d="M2 8h10M8 4l6 4-6 4"/></svg>
-              Proponi
-            </button>
-          )}
+      <div className="bg-white rounded-t-2xl md:rounded-2xl w-full max-w-md max-h-[90vh] flex flex-col shadow-2xl">
+        <div className="flex items-center gap-3 px-5 py-4 border-b bg-slate-50 border-warm-100 rounded-t-2xl flex-shrink-0">
+          <div className="w-2 h-2 rounded-full bg-slate-400"/>
+          <span className="font-700 text-warm-900 text-sm flex-1">{isNew ? 'Nuova idea' : form.name}</span>
           <button onClick={onClose} className="text-warm-400 hover:text-warm-700 p-1">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4"><path d="M3 3l10 10M13 3L3 13"/></svg>
           </button>
         </div>
-
-        <form id="proj-form" onSubmit={save} className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-none">
-
+        <form id="idea-form" onSubmit={save} className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-none">
           <div>
-            <label className="text-xs font-600 text-warm-500 mb-1 block">Nome progetto *</label>
+            <label className="text-xs font-600 text-warm-500 mb-1 block">Nome *</label>
             <input value={form.name} onChange={e => set('name', e.target.value)} required
-              placeholder="Es: OOH! Dessert Frozen 200g"
               className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50"/>
           </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="text-xs font-600 text-warm-500 mb-1 block">Stage</label>
-              <select value={form.stage} onChange={e => set('stage', e.target.value)}
-                className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50">
-                <option value="idea">Idea</option>
-                <option value="sviluppo">Sviluppo</option>
-                <option value="test">Test</option>
-                <option value="pronto">Pronto</option>
-              </select>
+          {/* Origine */}
+          <div>
+            <label className="text-xs font-600 text-warm-500 mb-1.5 block">Origine</label>
+            <div className="flex gap-2">
+              {['cliente','interna'].map(o => (
+                <button key={o} type="button" onClick={() => set('origin', form.origin === o ? '' : o)}
+                  className={`flex-1 py-2 rounded-xl text-xs font-600 border-2 transition-all ${form.origin === o ? `${ORIGIN_COLORS[o]} border-current` : 'border-warm-200 text-warm-400 hover:border-warm-300'}`}>
+                  {ORIGIN_LABELS[o]}
+                </button>
+              ))}
             </div>
+          </div>
+          {/* Priorità */}
+          <div>
+            <label className="text-xs font-600 text-warm-500 mb-1.5 block">Priorità</label>
+            <div className="flex gap-2">
+              {['bassa','media','alta'].map(p => (
+                <button key={p} type="button" onClick={() => set('priority', p)}
+                  className={`flex-1 py-2 rounded-xl text-xs font-600 border-2 transition-all capitalize ${form.priority === p ? `${PRI_COLORS[p]} border-current` : 'border-warm-200 text-warm-400 hover:border-warm-300'}`}>
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-600 text-warm-500 mb-1 block">Mercato</label>
               <select value={form.market} onChange={e => set('market', e.target.value)}
@@ -198,86 +198,39 @@ function ProjectModal({ project, onClose, onSaved, onDeleted, onProponi }) {
               </select>
             </div>
             <div>
-              <label className="text-xs font-600 text-warm-500 mb-1 block">Priorità</label>
-              <select value={form.priority} onChange={e => set('priority', e.target.value)}
-                className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50">
-                {PRIORITIES.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-600 text-warm-500 mb-1 block">Fornitore</label>
-              <input value={form.supplier} onChange={e => set('supplier', e.target.value)}
-                placeholder="Nome fornitore"
-                className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50"/>
-            </div>
-            <div>
               <label className="text-xs font-600 text-warm-500 mb-1 block">Formato / Peso</label>
               <input value={form.weight_format} onChange={e => set('weight_format', e.target.value)}
-                placeholder="Es: 200g, 6x100g"
+                placeholder="Es: 200g"
                 className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50"/>
             </div>
           </div>
-
           <div>
-            <label className="text-xs font-600 text-warm-500 mb-1 block">Costo indicativo (€/pz)</label>
-            <input type="number" step="0.01" value={form.cost_per_unit} onChange={e => set('cost_per_unit', e.target.value)}
-              placeholder="0.00"
+            <label className="text-xs font-600 text-warm-500 mb-1 block">Fornitore</label>
+            <input value={form.supplier} onChange={e => set('supplier', e.target.value)}
               className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50"/>
           </div>
-
           <div>
             <label className="text-xs font-600 text-warm-500 mb-1 block">Cliente / Buyer</label>
             <input value={form.client} onChange={e => set('client', e.target.value)}
-              placeholder="Es: VDB Frozen Food Production"
               className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50"/>
           </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-1">
-              <label className="text-xs font-600 text-warm-500 mb-1 block">Sigla paese</label>
-              <input value={form.country_code} onChange={e => set('country_code', e.target.value.toUpperCase().slice(0,2))}
-                placeholder="IT" maxLength={2}
-                className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50 uppercase font-600 text-center tracking-widest"/>
-            </div>
-            <div className="col-span-2">
-              <label className="text-xs font-600 text-warm-500 mb-1 block">Paese destinazione</label>
-              <input value={form.country} onChange={e => set('country', e.target.value)}
-                placeholder="Es: Belgio"
-                className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50"/>
-            </div>
-          </div>
-
           <div>
-            <label className="text-xs font-600 text-warm-500 mb-1 block">Descrizione</label>
-            <textarea value={form.description} onChange={e => set('description', e.target.value)} rows={2}
-              className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50 resize-none"/>
-          </div>
-
-          <div>
-            <label className="text-xs font-600 text-warm-500 mb-1 block">Note interne</label>
+            <label className="text-xs font-600 text-warm-500 mb-1 block">Note</label>
             <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3}
-              placeholder="Aggiornamenti, ostacoli, decisioni..."
               className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50 resize-none"/>
           </div>
-
         </form>
-
         <div className="px-5 py-4 border-t border-warm-100 flex gap-2 flex-shrink-0">
           {!isNew && profile?.role === 'admin' && (
             <button onClick={del} disabled={deleting}
-              className="text-sm text-red-500 hover:text-red-700 font-500 border border-red-200 hover:border-red-300 rounded-xl px-4 py-2 transition-colors disabled:opacity-40">
+              className="text-sm text-red-500 border border-red-200 rounded-xl px-4 py-2 disabled:opacity-40">
               {deleting ? '...' : 'Elimina'}
             </button>
           )}
           <div className="flex-1"/>
-          <button onClick={onClose} className="text-sm text-warm-500 hover:text-warm-700 font-500 border border-warm-200 rounded-xl px-4 py-2 transition-colors">
-            Annulla
-          </button>
-          <button form="proj-form" type="submit" disabled={saving}
-            className="bg-brand-500 hover:bg-brand-600 text-white text-sm font-600 rounded-xl px-5 py-2 transition-colors disabled:opacity-40">
+          <button onClick={onClose} className="text-sm text-warm-500 border border-warm-200 rounded-xl px-4 py-2">Annulla</button>
+          <button form="idea-form" type="submit" disabled={saving}
+            className="bg-brand-500 hover:bg-brand-600 text-white text-sm font-600 rounded-xl px-5 py-2 disabled:opacity-40">
             {saving ? 'Salvo...' : isNew ? 'Crea' : 'Salva'}
           </button>
         </div>
@@ -286,157 +239,348 @@ function ProjectModal({ project, onClose, onSaved, onDeleted, onProponi }) {
   )
 }
 
-// ── Card Kanban ───────────────────────────────────────────────────────────────
-function SortableCard({ project, column, onClick }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: project.id })
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
+// ── Modal Pronto (form semplificato) ──────────────────────────────────────────
+function ProntoModal({ project, onClose, onSaved, onDeleted, onProponi }) {
+  const { profile } = useApp()
+  const [form, setForm] = useState({
+    name:          project?.name || '',
+    market:        project?.market || 'Retail',
+    supplier:      project?.supplier || '',
+    weight_format: project?.weight_format || '',
+    cost_per_unit: project?.cost_per_unit || '',
+    country_code:  project?.country_code || '',
+    country:       project?.country || '',
+    client:        project?.client || '',
+    notes:         project?.notes || '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  async function save(e) {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      const body = { ...form, cost_per_unit: form.cost_per_unit ? parseFloat(form.cost_per_unit) : null, supplier: form.supplier || null, weight_format: form.weight_format || null, country_code: form.country_code || null, country: form.country || null, client: form.client || null }
+      const d = await api(`/api/projects/${project.id}`, { method: 'PATCH', body })
+      onSaved(d.project, false)
+      onClose()
+    } catch (err) { alert(err.message) }
+    setSaving(false)
+  }
+
+  async function del() {
+    if (!confirm(`Eliminare "${project.name}"?`)) return
+    setDeleting(true)
+    try {
+      await api(`/api/projects/${project.id}`, { method: 'DELETE' })
+      onDeleted(project.id)
+      onClose()
+    } catch (err) { alert(err.message) }
+    setDeleting(false)
+  }
 
   return (
-    <div ref={setNodeRef} style={style} className="relative group/card">
-      <div {...attributes} {...listeners}
-        className="absolute top-2 right-2 cursor-grab active:cursor-grabbing opacity-0 group-hover/card:opacity-60 transition-opacity touch-none z-10">
-        <svg viewBox="0 0 8 14" fill="currentColor" className="w-2 h-3 text-warm-400">
-          <circle cx="2" cy="2" r="1.2"/><circle cx="6" cy="2" r="1.2"/>
-          <circle cx="2" cy="7" r="1.2"/><circle cx="6" cy="7" r="1.2"/>
-          <circle cx="2" cy="12" r="1.2"/><circle cx="6" cy="12" r="1.2"/>
-        </svg>
-      </div>
-      <div onClick={onClick}
-        className={`bg-white rounded-xl border border-l-4 border-warm-200 ${column.cardBorder} p-3 cursor-pointer hover:shadow-md transition-all`}>
-
-        <div className="font-600 text-sm text-warm-900 mb-1.5 pr-4 leading-snug">{project.name}</div>
-
-        <div className="flex flex-wrap gap-1 mb-2">
-          {project.market && <MarketBadge market={project.market}/>}
-          {project.priority && <PriBadge priority={project.priority}/>}
-          {/* sotto-stage visibile solo in colonna Sviluppi */}
-          {column.key === 'sviluppi' && <StageBadge stage={project.stage}/>}
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-end md:items-center justify-center p-0 md:p-4"
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-white rounded-t-2xl md:rounded-2xl w-full max-w-md max-h-[90vh] flex flex-col shadow-2xl">
+        <div className="flex items-center gap-3 px-5 py-4 border-b bg-emerald-50 border-warm-100 rounded-t-2xl flex-shrink-0">
+          <div className="w-2 h-2 rounded-full bg-emerald-500"/>
+          <span className="font-700 text-warm-900 text-sm flex-1 truncate">{form.name}</span>
+          <button onClick={() => { onClose(); onProponi(project) }}
+            className="text-xs font-600 bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-1">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3"><path d="M2 8h10M8 4l6 4-6 4"/></svg>
+            Proponi
+          </button>
+          <button onClick={onClose} className="text-warm-400 hover:text-warm-700 p-1">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4"><path d="M3 3l10 10M13 3L3 13"/></svg>
+          </button>
         </div>
-
-        <div className="space-y-0.5">
-          {project.supplier && (
-            <div className="flex items-center gap-1 text-xs text-warm-500">
-              <span className="text-warm-300">Forn.</span>
-              <span className="truncate font-500">{project.supplier}</span>
-            </div>
-          )}
-          {project.weight_format && (
-            <div className="text-xs text-warm-400">{project.weight_format}</div>
-          )}
-          {project.client && (
-            <div className="flex items-center gap-1 text-xs text-warm-500">
-              <span className="text-warm-300">Buy.</span>
-              <span className="truncate">{project.client}</span>
-            </div>
-          )}
-        </div>
-
-        {(project.cost_per_unit || project.country_code) && (
-          <div className="flex items-center justify-between mt-2 pt-2 border-t border-warm-100">
-            {project.cost_per_unit
-              ? <span className="text-xs font-700 text-warm-700">€ {Number(project.cost_per_unit).toFixed(2)}</span>
-              : <span/>
-            }
-            {project.country_code && (
-              <span className="text-xs font-700 text-warm-400 bg-warm-100 px-1.5 py-0.5 rounded font-mono">{project.country_code}</span>
-            )}
+        <form id="pronto-form" onSubmit={save} className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-none">
+          <div>
+            <label className="text-xs font-600 text-warm-500 mb-1 block">Nome *</label>
+            <input value={form.name} onChange={e => set('name', e.target.value)} required
+              className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50"/>
           </div>
-        )}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-600 text-warm-500 mb-1 block">Mercato</label>
+              <select value={form.market} onChange={e => set('market', e.target.value)}
+                className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50">
+                {MARKETS.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-600 text-warm-500 mb-1 block">Formato</label>
+              <input value={form.weight_format} onChange={e => set('weight_format', e.target.value)}
+                className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50"/>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-600 text-warm-500 mb-1 block">Fornitore</label>
+              <input value={form.supplier} onChange={e => set('supplier', e.target.value)}
+                className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50"/>
+            </div>
+            <div>
+              <label className="text-xs font-600 text-warm-500 mb-1 block">Costo (€/pz)</label>
+              <input type="number" step="0.01" value={form.cost_per_unit} onChange={e => set('cost_per_unit', e.target.value)}
+                className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50"/>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-600 text-warm-500 mb-1 block">Cliente / Buyer</label>
+            <input value={form.client} onChange={e => set('client', e.target.value)}
+              className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50"/>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-xs font-600 text-warm-500 mb-1 block">Paese</label>
+              <input value={form.country_code} onChange={e => set('country_code', e.target.value.toUpperCase().slice(0,2))}
+                placeholder="IT" maxLength={2}
+                className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50 uppercase text-center font-600 tracking-widest"/>
+            </div>
+            <div className="col-span-2">
+              <label className="text-xs font-600 text-warm-500 mb-1 block">Destinazione</label>
+              <input value={form.country} onChange={e => set('country', e.target.value)}
+                className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50"/>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-600 text-warm-500 mb-1 block">Note</label>
+            <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2}
+              className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50 resize-none"/>
+          </div>
+        </form>
+        <div className="px-5 py-4 border-t border-warm-100 flex gap-2 flex-shrink-0">
+          {profile?.role === 'admin' && (
+            <button onClick={del} disabled={deleting}
+              className="text-sm text-red-500 border border-red-200 rounded-xl px-4 py-2 disabled:opacity-40">
+              {deleting ? '...' : 'Elimina'}
+            </button>
+          )}
+          <div className="flex-1"/>
+          <button onClick={onClose} className="text-sm text-warm-500 border border-warm-200 rounded-xl px-4 py-2">Annulla</button>
+          <button form="pronto-form" type="submit" disabled={saving}
+            className="bg-brand-500 hover:bg-brand-600 text-white text-sm font-600 rounded-xl px-5 py-2 disabled:opacity-40">
+            {saving ? 'Salvo...' : 'Salva'}
+          </button>
+        </div>
       </div>
     </div>
   )
 }
 
-// ── Vista Tabella ─────────────────────────────────────────────────────────────
-const TABLE_COLS = [
-  { key: 'name',         label: 'Progetto' },
-  { key: 'stage',        label: 'Stage' },
-  { key: 'market',       label: 'Mercato' },
-  { key: 'priority',     label: 'Priorità' },
-  { key: 'supplier',     label: 'Fornitore' },
-  { key: 'weight_format',label: 'Formato' },
-  { key: 'cost_per_unit',label: 'Costo/pz' },
-  { key: 'client',       label: 'Cliente' },
-  { key: 'country',      label: 'Paese' },
-]
+// ── Pannello Sviluppo (inline) ────────────────────────────────────────────────
+function SviluppoPanel({ project, onClose, onSaved, onDeleted, onAdvance }) {
+  const { profile } = useApp()
+  const [steps, setSteps] = useState(
+    project.dev_steps?.length ? project.dev_steps : DEFAULT_DEV_STEPS
+  )
+  const [newStepTitle, setNewStepTitle] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [advancing, setAdvancing] = useState(false)
+  const [editingName, setEditingName] = useState(false)
+  const [name, setName] = useState(project.name)
+  const [notes, setNotes] = useState(project.notes || '')
 
-function TableView({ projects, onRowClick }) {
-  const [sortKey, setSortKey] = useState('stage')
-  const [sortDir, setSortDir] = useState(1)
+  const done = steps.filter(s => s.completed).length
+  const pct = steps.length ? Math.round(done / steps.length * 100) : 0
+  const allDone = steps.length > 0 && done === steps.length
 
-  function toggleSort(key) {
-    if (sortKey === key) setSortDir(d => -d)
-    else { setSortKey(key); setSortDir(1) }
+  async function toggleStep(id) {
+    const updated = steps.map(s =>
+      s.id === id ? { ...s, completed: !s.completed, completed_at: !s.completed ? new Date().toISOString() : null } : s
+    )
+    setSteps(updated)
+    await api(`/api/projects/${project.id}/steps`, { method: 'PATCH', body: { dev_steps: updated } })
+    onSaved({ ...project, dev_steps: updated })
   }
 
-  const STAGE_ORDER = { idea: 0, sviluppo: 1, test: 2, pronto: 3 }
-  const PRI_ORDER   = { alta: 0, media: 1, bassa: 2 }
+  async function addStep(e) {
+    e.preventDefault()
+    const title = newStepTitle.trim()
+    if (!title) return
+    const updated = [...steps, { id: Date.now().toString(), title, completed: false, completed_at: null }]
+    setSteps(updated)
+    setNewStepTitle('')
+    await api(`/api/projects/${project.id}/steps`, { method: 'PATCH', body: { dev_steps: updated } })
+    onSaved({ ...project, dev_steps: updated })
+  }
 
-  const sorted = [...projects].sort((a, b) => {
-    let va = a[sortKey] ?? ''
-    let vb = b[sortKey] ?? ''
-    if (sortKey === 'stage') { va = STAGE_ORDER[va] ?? 99; vb = STAGE_ORDER[vb] ?? 99 }
-    if (sortKey === 'priority') { va = PRI_ORDER[va] ?? 99; vb = PRI_ORDER[vb] ?? 99 }
-    if (sortKey === 'cost_per_unit') { va = Number(va) || 0; vb = Number(vb) || 0 }
-    if (va < vb) return -sortDir
-    if (va > vb) return sortDir
-    return 0
-  })
+  async function removeStep(id) {
+    const updated = steps.filter(s => s.id !== id)
+    setSteps(updated)
+    await api(`/api/projects/${project.id}/steps`, { method: 'PATCH', body: { dev_steps: updated } })
+    onSaved({ ...project, dev_steps: updated })
+  }
 
-  function SortIcon({ col }) {
-    if (sortKey !== col) return <span className="text-warm-200 ml-1">↕</span>
-    return <span className="text-brand-500 ml-1">{sortDir === 1 ? '↑' : '↓'}</span>
+  async function saveName() {
+    if (!name.trim() || name === project.name) { setEditingName(false); return }
+    await api(`/api/projects/${project.id}`, { method: 'PATCH', body: { name } })
+    onSaved({ ...project, name })
+    setEditingName(false)
+  }
+
+  async function saveNotes() {
+    await api(`/api/projects/${project.id}`, { method: 'PATCH', body: { notes } })
+    onSaved({ ...project, notes })
+  }
+
+  async function advance() {
+    setAdvancing(true)
+    try {
+      const d = await api(`/api/projects/${project.id}`, { method: 'PATCH', body: { stage: 'pronto' } })
+      onAdvance(d.project)
+      onClose()
+    } catch (err) { alert(err.message) }
+    setAdvancing(false)
+  }
+
+  async function del() {
+    if (!confirm(`Eliminare "${project.name}"?`)) return
+    await api(`/api/projects/${project.id}`, { method: 'DELETE' })
+    onDeleted(project.id)
+    onClose()
   }
 
   return (
-    <div className="flex-1 overflow-auto scrollbar-none">
-      <table className="w-full text-sm border-collapse min-w-[900px]">
-        <thead className="sticky top-0 z-10">
-          <tr className="bg-white border-b border-warm-200">
-            {TABLE_COLS.map(col => (
-              <th key={col.key} onClick={() => toggleSort(col.key)}
-                className="text-left text-xs font-700 text-warm-500 uppercase tracking-wider px-4 py-3 cursor-pointer hover:text-warm-900 whitespace-nowrap select-none">
-                {col.label}<SortIcon col={col.key}/>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((p, i) => (
-            <tr key={p.id} onClick={() => onRowClick(p)}
-              className={`border-b border-warm-100 cursor-pointer transition-colors hover:bg-brand-50/40 ${i % 2 === 0 ? 'bg-white' : 'bg-warm-50/40'}`}>
-              <td className="px-4 py-2.5">
-                <div className="flex items-center gap-2">
-                  <div className={`w-1 h-8 rounded-full flex-shrink-0 ${STAGE_BADGE[p.stage] ? 'bg-blue-400' : 'bg-warm-300'}`}
-                    style={p.stage === 'pronto' ? {background: '#10b981'} : p.stage === 'test' ? {background: '#f59e0b'} : p.stage === 'idea' ? {background: '#94a3b8'} : {}}/>
-                  <span className="font-600 text-warm-900 leading-snug">{p.name}</span>
-                </div>
-              </td>
-              <td className="px-4 py-2.5"><StageBadge stage={p.stage}/></td>
-              <td className="px-4 py-2.5">{p.market && <MarketBadge market={p.market}/>}</td>
-              <td className="px-4 py-2.5"><PriBadge priority={p.priority}/></td>
-              <td className="px-4 py-2.5 text-xs text-warm-600">{p.supplier || <span className="text-warm-300">—</span>}</td>
-              <td className="px-4 py-2.5 text-xs text-warm-500">{p.weight_format || <span className="text-warm-300">—</span>}</td>
-              <td className="px-4 py-2.5 text-xs font-700 text-warm-700">
-                {p.cost_per_unit ? `€ ${Number(p.cost_per_unit).toFixed(2)}` : <span className="text-warm-300 font-400">—</span>}
-              </td>
-              <td className="px-4 py-2.5 text-xs text-warm-600">{p.client || <span className="text-warm-300">—</span>}</td>
-              <td className="px-4 py-2.5">
-                {p.country_code
-                  ? <span className="inline-flex items-center gap-1 text-xs text-warm-600">
-                      <span className="font-mono font-700 bg-warm-100 px-1.5 py-0.5 rounded text-warm-500">{p.country_code}</span>
-                      {p.country && <span>{p.country}</span>}
-                    </span>
-                  : <span className="text-warm-300">—</span>
-                }
-              </td>
-            </tr>
-          ))}
-          {sorted.length === 0 && (
-            <tr><td colSpan={9} className="text-center text-warm-300 py-16 text-sm">Nessun progetto</td></tr>
+    <div className="flex flex-col h-full bg-white border-l border-warm-200 w-80 flex-shrink-0 overflow-hidden">
+      {/* Header pannello */}
+      <div className="px-4 py-3.5 bg-blue-50 border-b border-blue-200 flex items-start gap-2 flex-shrink-0">
+        <div className="flex-1 min-w-0">
+          {editingName ? (
+            <input value={name} onChange={e => setName(e.target.value)}
+              onBlur={saveName} onKeyDown={e => { if (e.key === 'Enter') saveName() }} autoFocus
+              className="w-full text-sm font-700 text-warm-900 border border-blue-300 rounded px-2 py-0.5 focus:outline-none"/>
+          ) : (
+            <div className="font-700 text-sm text-warm-900 leading-snug cursor-pointer hover:text-blue-700 transition-colors truncate"
+              onClick={() => setEditingName(true)} title="Clicca per modificare">
+              {project.name}
+            </div>
           )}
-        </tbody>
-      </table>
+          {project.market && <span className={`text-2xs font-700 px-1.5 py-0.5 rounded-full mt-0.5 inline-block ${MARKET_COLORS[project.market] || ''}`}>{project.market}</span>}
+        </div>
+        <button onClick={onClose} className="text-warm-400 hover:text-warm-700 p-0.5 flex-shrink-0 mt-0.5">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4"><path d="M3 3l10 10M13 3L3 13"/></svg>
+        </button>
+      </div>
+
+      {/* Progress bar */}
+      <div className="px-4 py-3 border-b border-warm-100 flex-shrink-0">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-xs text-warm-500">{done} di {steps.length} completati</span>
+          <span className="text-xs font-700 text-blue-600">{pct}%</span>
+        </div>
+        <div className="h-2 bg-warm-100 rounded-full overflow-hidden">
+          <div className="h-full rounded-full transition-all duration-500"
+            style={{ width: `${pct}%`, background: pct === 100 ? '#10b981' : '#60a5fa' }}/>
+        </div>
+      </div>
+
+      {/* Steps */}
+      <div className="flex-1 overflow-y-auto p-4 scrollbar-none space-y-1">
+        {steps.map((step, i) => (
+          <div key={step.id} className="flex items-center gap-2.5 group py-1">
+            <button onClick={() => toggleStep(step.id)}
+              className={`w-4.5 h-4.5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-all ${step.completed ? 'bg-emerald-500 border-emerald-500' : 'border-warm-300 hover:border-blue-400'}`}>
+              {step.completed && <svg viewBox="0 0 10 10" fill="none" className="w-2.5 h-2.5"><path d="M2 5l2.5 2.5L8 3" stroke="#fff" strokeWidth="1.5"/></svg>}
+            </button>
+            <span className={`flex-1 text-sm transition-colors ${step.completed ? 'line-through text-warm-300' : 'text-warm-800'}`}>
+              {step.title}
+            </span>
+            {profile?.role === 'admin' && (
+              <button onClick={() => removeStep(step.id)}
+                className="opacity-0 group-hover:opacity-100 text-warm-300 hover:text-red-400 transition-all p-0.5">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+              </button>
+            )}
+          </div>
+        ))}
+
+        {/* Aggiungi step */}
+        <form onSubmit={addStep} className="flex items-center gap-2 mt-3 pt-3 border-t border-warm-100">
+          <input value={newStepTitle} onChange={e => setNewStepTitle(e.target.value)}
+            placeholder="Aggiungi step..."
+            className="flex-1 text-xs border border-warm-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-blue-400 bg-warm-50"/>
+          <button type="submit" disabled={!newStepTitle.trim()}
+            className="text-blue-500 hover:text-blue-700 disabled:opacity-30 p-1">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M8 3v10M3 8h10"/></svg>
+          </button>
+        </form>
+
+        {/* Note */}
+        <div className="mt-4 pt-4 border-t border-warm-100">
+          <label className="text-xs font-600 text-warm-400 mb-1.5 block uppercase tracking-wider">Note</label>
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} onBlur={saveNotes} rows={3}
+            placeholder="Note interne..."
+            className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400 bg-warm-50 resize-none"/>
+        </div>
+      </div>
+
+      {/* Footer pannello */}
+      <div className="px-4 py-3 border-t border-warm-100 flex gap-2 flex-shrink-0">
+        {profile?.role === 'admin' && (
+          <button onClick={del} className="text-xs text-red-400 hover:text-red-600 border border-red-200 rounded-lg px-3 py-1.5">
+            Elimina
+          </button>
+        )}
+        <div className="flex-1"/>
+        <button onClick={advance} disabled={advancing}
+          className={`text-xs font-700 rounded-lg px-4 py-1.5 transition-all flex items-center gap-1.5 ${allDone ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'bg-blue-100 hover:bg-blue-200 text-blue-700'} disabled:opacity-40`}>
+          {advancing ? '...' : <><span>Pronto</span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3"><path d="M3 8h10M9 4l4 4-4 4"/></svg></>}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Card Kanban ───────────────────────────────────────────────────────────────
+function ProjectCard({ project, col, onClick, onAdvance, onProponi }) {
+  const [advancing, setAdvancing] = useState(false)
+
+  async function handleAdvance(e) {
+    e.stopPropagation()
+    if (col.key === 'pronto') { onProponi(project); return }
+    setAdvancing(true)
+    try {
+      const d = await api(`/api/projects/${project.id}`, { method: 'PATCH', body: { stage: col.nextStage } })
+      onAdvance(d.project)
+    } catch (err) { alert(err.message) }
+    setAdvancing(false)
+  }
+
+  const steps = project.dev_steps || []
+  const done = steps.filter(s => s.completed).length
+
+  return (
+    <div onClick={onClick}
+      className={`bg-white rounded-xl border border-l-4 border-warm-200 ${col.cardBorder} p-3 cursor-pointer hover:shadow-md transition-all group/card`}>
+
+      <div className="font-600 text-sm text-warm-900 mb-1.5 leading-snug">{project.name}</div>
+
+      <div className="flex flex-wrap gap-1 mb-2">
+        {project.market && <MarketBadge market={project.market}/>}
+        {col.key === 'idea' && project.priority && <PriBadge priority={project.priority}/>}
+        {col.key === 'idea' && project.origin && <OriginBadge origin={project.origin}/>}
+      </div>
+
+      {project.weight_format && <div className="text-xs text-warm-400 mb-1">{project.weight_format}</div>}
+      {project.supplier && <div className="text-xs text-warm-500"><span className="text-warm-300">Forn. </span>{project.supplier}</div>}
+      {project.client && <div className="text-xs text-warm-500"><span className="text-warm-300">Buy. </span>{project.client}</div>}
+
+      {/* Progress bar per sviluppo */}
+      {col.key === 'sviluppo' && steps.length > 0 && <StepProgress steps={steps}/>}
+
+      {/* Bottone avanzamento */}
+      <div className="mt-2.5 pt-2 border-t border-warm-100 flex justify-end">
+        <button onClick={handleAdvance} disabled={advancing}
+          className={`text-2xs font-700 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 opacity-0 group-hover/card:opacity-100
+            ${col.key === 'pronto' ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}
+            disabled:opacity-30`}>
+          {advancing ? '...' : col.nextLabel}
+        </button>
+      </div>
     </div>
   )
 }
@@ -444,21 +588,15 @@ function TableView({ projects, onRowClick }) {
 // ── Vista principale ──────────────────────────────────────────────────────────
 export default function Projects({ onProponiPipeline }) {
   const { profile } = useApp()
-  const [projects, setProjects] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState(null)
+  const [projects, setProjects]       = useState([])
+  const [loading, setLoading]         = useState(true)
+  const [modal, setModal]             = useState(null) // { type: 'idea'|'pronto', project }
+  const [sviluppoPanel, setSviluppoPanel] = useState(null) // project
   const [filterMarket, setFilterMarket] = useState('')
-  const [filterPri, setFilterPri] = useState('')
-  const [view, setView] = useState('kanban')
-  const [syncing, setSyncing] = useState(false)
-  const [deduping, setDeduping] = useState(false)
-  const [syncResult, setSyncResult] = useState(null)
+  const [syncing, setSyncing]         = useState(false)
+  const [deduping, setDeduping]       = useState(false)
+  const [syncResult, setSyncResult]   = useState(null)
   const fileInputRef = useRef(null)
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
-  )
 
   const load = () => api('/api/projects')
     .then(d => setProjects(d.projects || []))
@@ -467,67 +605,44 @@ export default function Projects({ onProponiPipeline }) {
 
   useEffect(() => { load() }, [])
 
-  const filtered = projects.filter(p => {
-    if (filterMarket && p.market !== filterMarket) return false
-    if (filterPri && p.priority !== filterPri) return false
-    return true
-  })
+  const filtered = projects.filter(p => !filterMarket || p.market === filterMarket)
 
-  function handleSaved(project, isNew) {
-    if (isNew) setProjects(prev => [project, ...prev])
-    else setProjects(prev => prev.map(p => p.id === project.id ? project : p))
+  function handleSaved(project) {
+    setProjects(prev => prev.map(p => p.id === project.id ? { ...p, ...project } : p))
+    if (sviluppoPanel?.id === project.id) setSviluppoPanel(prev => ({ ...prev, ...project }))
   }
-
+  function handleCreated(project) { setProjects(prev => [project, ...prev]) }
   function handleDeleted(id) {
     setProjects(prev => prev.filter(p => p.id !== id))
+    if (sviluppoPanel?.id === id) setSviluppoPanel(null)
   }
-
-  function handleDragEnd(colKey, { active, over }) {
-    if (!over || active.id === over.id) return
-    setProjects(prev => {
-      const col = COLUMNS.find(c => c.key === colKey)
-      const colItems = prev.filter(p => col.stages.includes(p.stage))
-      const oldIdx = colItems.findIndex(p => p.id === active.id)
-      const newIdx = colItems.findIndex(p => p.id === over.id)
-      const reordered = arrayMove(colItems, oldIdx, newIdx)
-      const rest = prev.filter(p => !col.stages.includes(p.stage))
-      return [...rest, ...reordered]
-    })
+  function handleAdvanced(project) {
+    setProjects(prev => prev.map(p => p.id === project.id ? { ...p, ...project } : p))
   }
 
   async function handleDedup() {
-    setDeduping(true)
-    setSyncResult(null)
+    setDeduping(true); setSyncResult(null)
     try {
-      const result = await api('/api/sync/dedup', { method: 'POST', body: {} })
-      setSyncResult({ ok: true, inserted: 0, updated: 0, skipped: 0, deleted_duplicates: result.deleted })
-      if (result.deleted > 0) load()
-    } catch (err) {
-      setSyncResult({ ok: false, error: err.message })
-    }
+      const r = await api('/api/sync/dedup', { method: 'POST', body: {} })
+      setSyncResult({ ok: true, inserted: 0, updated: 0, skipped: 0, deleted_duplicates: r.deleted })
+      if (r.deleted > 0) load()
+    } catch (err) { setSyncResult({ ok: false, error: err.message }) }
     setDeduping(false)
   }
 
   async function handleSync(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    e.target.value = ''
-    setSyncing(true)
-    setSyncResult(null)
+    const file = e.target.files?.[0]; if (!file) return
+    e.target.value = ''; setSyncing(true); setSyncResult(null)
     try {
-      const form = new FormData()
-      form.append('file', file)
-      const result = await api('/api/sync/progetti', { method: 'POST', body: form })
-      setSyncResult({ ok: true, ...result })
-      load()
-    } catch (err) {
-      setSyncResult({ ok: false, error: err.message })
-    }
+      const form = new FormData(); form.append('file', file)
+      const r = await api('/api/sync/progetti', { method: 'POST', body: form })
+      setSyncResult({ ok: true, ...r }); load()
+    } catch (err) { setSyncResult({ ok: false, error: err.message }) }
     setSyncing(false)
   }
 
   const colCounts = Object.fromEntries(
-    COLUMNS.map(c => [c.key, filtered.filter(p => c.stages.includes(p.stage)).length])
+    COLUMNS.map(c => [c.key, filtered.filter(p => p.stage === c.key || (c.key === 'sviluppo' && p.stage === 'test')).length])
   )
 
   return (
@@ -536,67 +651,41 @@ export default function Projects({ onProponiPipeline }) {
       <div className="px-6 py-4 bg-white border-b border-warm-200 flex items-center gap-3 flex-shrink-0">
         <div className="flex-1 min-w-0">
           <h1 className="text-base font-bold tracking-tight text-warm-900">Progetti</h1>
-          <div className="flex items-center gap-3 mt-1 flex-wrap">
+          <div className="flex items-center gap-3 mt-1">
             {COLUMNS.map(c => (
               <span key={c.key} className="flex items-center gap-1 text-xs">
                 <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`}/>
                 <span className={`font-600 ${c.color}`}>{c.label}</span>
-                <span className="text-warm-400 font-400">{colCounts[c.key]}</span>
+                <span className="text-warm-400">{colCounts[c.key]}</span>
               </span>
             ))}
             <span className="text-warm-300 text-xs">· {filtered.length} totali</span>
           </div>
         </div>
 
-        {/* Filtri */}
-        <div className="hidden md:flex gap-2">
-          <select value={filterMarket} onChange={e => setFilterMarket(e.target.value)}
-            className="text-xs border border-warm-200 rounded-lg px-2 py-1.5 bg-white text-warm-700 focus:outline-none focus:border-brand-400">
-            <option value="">Mercato</option>
-            {MARKETS.map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
-          <select value={filterPri} onChange={e => setFilterPri(e.target.value)}
-            className="text-xs border border-warm-200 rounded-lg px-2 py-1.5 bg-white text-warm-700 focus:outline-none focus:border-brand-400">
-            <option value="">Priorità</option>
-            {PRIORITIES.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
-          </select>
-        </div>
-
-        {/* Toggle Kanban / Tabella */}
-        <div className="flex items-center bg-warm-100 rounded-lg p-0.5 gap-0.5">
-          <button onClick={() => setView('kanban')}
-            className={`px-3 py-1.5 rounded-md text-xs font-600 transition-all ${view === 'kanban' ? 'bg-white text-warm-900 shadow-sm' : 'text-warm-400 hover:text-warm-700'}`}>
-            Kanban
-          </button>
-          <button onClick={() => setView('table')}
-            className={`px-3 py-1.5 rounded-md text-xs font-600 transition-all ${view === 'table' ? 'bg-white text-warm-900 shadow-sm' : 'text-warm-400 hover:text-warm-700'}`}>
-            Tabella
-          </button>
-        </div>
+        <select value={filterMarket} onChange={e => setFilterMarket(e.target.value)}
+          className="text-xs border border-warm-200 rounded-lg px-2 py-1.5 bg-white text-warm-700 focus:outline-none hidden md:block">
+          <option value="">Mercato</option>
+          {MARKETS.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
 
         {profile?.role === 'admin' && (
           <>
-            <button onClick={handleDedup} disabled={deduping}
-              className="text-sm font-600 rounded-lg px-3 py-2 border border-warm-200 hover:border-red-300 text-warm-400 hover:text-red-500 transition-colors flex items-center gap-1.5 flex-shrink-0 disabled:opacity-40"
-              title="Rimuovi duplicati">
-              {deduping
-                ? <span className="w-3.5 h-3.5 border-2 border-red-300 border-t-transparent rounded-full animate-spin"/>
-                : <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5"><path d="M4 4l8 8M12 4l-8 8"/></svg>
-              }
+            <button onClick={handleDedup} disabled={deduping} title="Rimuovi duplicati"
+              className="text-sm font-600 rounded-lg p-2 border border-warm-200 hover:border-red-300 text-warm-400 hover:text-red-500 transition-colors disabled:opacity-40">
+              {deduping ? <span className="w-3.5 h-3.5 border-2 border-red-300 border-t-transparent rounded-full animate-spin block"/> : <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5"><path d="M4 4l8 8M12 4l-8 8"/></svg>}
             </button>
             <input ref={fileInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleSync}/>
             <button onClick={() => fileInputRef.current?.click()} disabled={syncing}
-              className="text-sm font-600 rounded-lg px-3 py-2 border border-warm-200 hover:border-brand-400 text-warm-600 hover:text-brand-600 transition-colors flex items-center gap-1.5 flex-shrink-0 disabled:opacity-40">
-              {syncing
-                ? <><span className="w-3.5 h-3.5 border-2 border-brand-400 border-t-transparent rounded-full animate-spin"/><span>Sync...</span></>
-                : <><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5"><path d="M2 8a6 6 0 1 0 1-3.3"/><path d="M2 2v4h4"/></svg><span>Sync Excel</span></>
-              }
+              className="text-xs font-600 rounded-lg px-3 py-2 border border-warm-200 hover:border-brand-400 text-warm-600 hover:text-brand-600 transition-colors flex items-center gap-1.5 disabled:opacity-40">
+              {syncing ? <span className="w-3 h-3 border-2 border-brand-400 border-t-transparent rounded-full animate-spin"/> : <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3"><path d="M2 8a6 6 0 1 0 1-3.3"/><path d="M2 2v4h4"/></svg>}
+              Sync
             </button>
           </>
         )}
 
         {['admin', 'manager'].includes(profile?.role) && (
-          <button onClick={() => setModal('new')}
+          <button onClick={() => setModal({ type: 'idea', project: null })}
             className="bg-brand-500 hover:bg-brand-600 text-white text-sm font-600 rounded-lg px-4 py-2 transition-colors flex items-center gap-1.5 flex-shrink-0">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5"><path d="M8 3v10M3 8h10"/></svg>
             Nuovo
@@ -606,89 +695,92 @@ export default function Projects({ onProponiPipeline }) {
 
       {/* Toast sync */}
       {syncResult && (
-        <div className={`mx-4 mt-2 px-4 py-2.5 rounded-xl text-sm flex items-center justify-between gap-3 ${syncResult.ok ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-          <span>
-            {syncResult.ok
-              ? `✓ Sync completato — ${syncResult.inserted} inseriti, ${syncResult.updated} aggiornati, ${syncResult.skipped} invariati${syncResult.deleted_duplicates ? `, ${syncResult.deleted_duplicates} duplicati rimossi` : ''}`
-              : `✗ Errore: ${syncResult.error}`
-            }
+        <div className={`mx-4 mt-2 px-4 py-2.5 rounded-xl text-sm flex items-center justify-between gap-3 flex-shrink-0 ${syncResult.ok ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+          <span>{syncResult.ok
+            ? `✓ ${syncResult.inserted > 0 || syncResult.updated > 0 || syncResult.deleted_duplicates > 0 ? `${syncResult.inserted} inseriti, ${syncResult.updated} aggiornati${syncResult.deleted_duplicates ? `, ${syncResult.deleted_duplicates} duplicati rimossi` : ''}` : 'Nessuna modifica necessaria'}`
+            : `✗ ${syncResult.error}`}
           </span>
-          <button onClick={() => setSyncResult(null)} className="opacity-50 hover:opacity-100 flex-shrink-0">
+          <button onClick={() => setSyncResult(null)} className="opacity-50 hover:opacity-100">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5"><path d="M3 3l10 10M13 3L3 13"/></svg>
           </button>
         </div>
       )}
 
-      {/* Filtri mobile */}
-      <div className="md:hidden flex gap-2 px-4 py-2 bg-white border-b border-warm-100">
-        <select value={filterMarket} onChange={e => setFilterMarket(e.target.value)}
-          className="flex-1 text-xs border border-warm-200 rounded-lg px-2 py-1.5 bg-white text-warm-700 focus:outline-none">
-          <option value="">Tutti i mercati</option>
-          {MARKETS.map(m => <option key={m} value={m}>{m}</option>)}
-        </select>
-        <select value={filterPri} onChange={e => setFilterPri(e.target.value)}
-          className="flex-1 text-xs border border-warm-200 rounded-lg px-2 py-1.5 bg-white text-warm-700 focus:outline-none">
-          <option value="">Tutte le priorità</option>
-          {PRIORITIES.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
-        </select>
-      </div>
-
-      {/* Vista Tabella */}
-      {view === 'table' && !loading && (
-        <TableView projects={filtered} onRowClick={p => setModal(p)} />
-      )}
-
-      {/* Vista Kanban — 2 colonne */}
-      {view === 'kanban' && (
+      {/* Kanban + pannello sviluppo */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Kanban */}
         <div className="flex flex-1 overflow-x-auto scrollbar-none bg-warm-50">
           {COLUMNS.map(col => {
-            const cards = filtered.filter(p => col.stages.includes(p.stage))
+            const cards = filtered.filter(p =>
+              p.stage === col.key || (col.key === 'sviluppo' && p.stage === 'test')
+            )
             return (
-              <div key={col.key} className="flex-1 min-w-[280px] flex flex-col border-r border-warm-200 last:border-r-0">
-                <div className={`px-4 py-3 ${col.headerBg} border-b ${col.border} flex items-center gap-2 flex-shrink-0`}>
+              <div key={col.key} className="flex-1 min-w-[240px] flex flex-col border-r border-warm-200 last:border-r-0">
+                <div className={`px-3 py-3 ${col.headerBg} border-b ${col.border} flex items-center gap-2 flex-shrink-0`}>
                   <div className={`w-2 h-2 rounded-full ${col.dot}`}/>
                   <span className={`text-xs font-700 uppercase tracking-widest ${col.color}`}>{col.label}</span>
                   <span className={`ml-auto text-xs font-700 ${col.color} bg-white/60 px-2 py-0.5 rounded-full`}>{cards.length}</span>
                 </div>
-                <div className="flex-1 overflow-y-auto p-3 scrollbar-none">
-                  {loading && [1,2,3].map(i => (
-                    <div key={i} className="bg-white rounded-xl border border-warm-200 p-3 mb-2 animate-pulse h-24"/>
-                  ))}
+                <div className="flex-1 overflow-y-auto p-2 scrollbar-none">
+                  {loading && [1,2].map(i => <div key={i} className="bg-white rounded-xl border border-warm-200 p-3 mb-2 animate-pulse h-20"/>)}
                   {!loading && (
-                    <DndContext sensors={sensors} collisionDetection={closestCenter}
-                      onDragEnd={e => handleDragEnd(col.key, e)}>
-                      <SortableContext items={cards.map(p => p.id)} strategy={verticalListSortingStrategy}>
-                        <div className="space-y-2">
-                          {cards.map(p => (
-                            <SortableCard key={p.id} project={p} column={col} onClick={() => setModal(p)} />
-                          ))}
-                          {cards.length === 0 && (
-                            <div className={`text-xs ${col.emptyColor} opacity-50 text-center py-12 border-2 border-dashed ${col.border} rounded-xl`}>
-                              Nessun progetto
-                            </div>
-                          )}
+                    <div className="space-y-2">
+                      {cards.map(p => (
+                        <ProjectCard key={p.id} project={p} col={col}
+                          onClick={() => {
+                            if (col.key === 'sviluppo') {
+                              setSviluppoPanel(prev => prev?.id === p.id ? null : p)
+                            } else if (col.key === 'idea') {
+                              setModal({ type: 'idea', project: p })
+                            } else {
+                              setModal({ type: 'pronto', project: p })
+                            }
+                          }}
+                          onAdvance={handleAdvanced}
+                          onProponi={p => { onProponiPipeline?.(p) }}
+                        />
+                      ))}
+                      {cards.length === 0 && (
+                        <div className={`text-xs ${col.emptyColor} opacity-40 text-center py-10 border-2 border-dashed ${col.border} rounded-xl`}>
+                          Nessun progetto
                         </div>
-                      </SortableContext>
-                    </DndContext>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
             )
           })}
         </div>
-      )}
 
-      {view === 'table' && loading && (
-        <div className="flex-1 flex items-center justify-center text-warm-300 text-sm">Caricamento...</div>
-      )}
+        {/* Pannello sviluppo */}
+        {sviluppoPanel && (
+          <SviluppoPanel
+            project={sviluppoPanel}
+            onClose={() => setSviluppoPanel(null)}
+            onSaved={handleSaved}
+            onDeleted={handleDeleted}
+            onAdvance={handleAdvanced}
+          />
+        )}
+      </div>
 
-      {modal && (
-        <ProjectModal
-          project={modal === 'new' ? null : modal}
+      {/* Modals */}
+      {modal?.type === 'idea' && (
+        <IdeaModal
+          project={modal.project}
           onClose={() => setModal(null)}
-          onSaved={handleSaved}
+          onSaved={(p, isNew) => { isNew ? handleCreated(p) : handleSaved(p) }}
           onDeleted={handleDeleted}
-          onProponi={onProponiPipeline}
+        />
+      )}
+      {modal?.type === 'pronto' && (
+        <ProntoModal
+          project={modal.project}
+          onClose={() => setModal(null)}
+          onSaved={(p) => handleSaved(p)}
+          onDeleted={handleDeleted}
+          onProponi={p => { setModal(null); onProponiPipeline?.(p) }}
         />
       )}
     </div>

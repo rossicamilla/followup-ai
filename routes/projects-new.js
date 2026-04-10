@@ -1,6 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const { requireAuth, sb: supabase } = require('../middleware/auth');
+const { v4: uuidv4 } = require('crypto').randomUUID ? { v4: () => require('crypto').randomUUID() } : require('crypto');
+
+const DEFAULT_DEV_STEPS = [
+  { id: '1', title: 'Ricerca fornitore',    completed: false, completed_at: null },
+  { id: '2', title: 'Campione ricevuto',    completed: false, completed_at: null },
+  { id: '3', title: 'Valutazione qualità',  completed: false, completed_at: null },
+  { id: '4', title: 'Analisi costo',        completed: false, completed_at: null },
+  { id: '5', title: 'Etichetta / Packaging',completed: false, completed_at: null },
+  { id: '6', title: 'Approvazione finale',  completed: false, completed_at: null },
+];
 
 // GET tutti i progetti
 router.get('/', requireAuth, async (req, res) => {
@@ -10,9 +20,9 @@ router.get('/', requireAuth, async (req, res) => {
     let query = supabase
       .from('projects')
       .select(`
-        id, name, description, market, stage, priority,
+        id, name, description, market, stage, priority, origin,
         supplier, weight_format, cost_per_unit, photo_url,
-        country_code, country, client,
+        country_code, country, client, notes, dev_steps,
         owner:profiles!owner_id(full_name, id),
         created_at, updated_at
       `);
@@ -21,7 +31,7 @@ router.get('/', requireAuth, async (req, res) => {
     if (priority) query = query.eq('priority', priority);
     if (market) query = query.eq('market', market);
 
-    const { data, error } = await query.order('priority', { ascending: false }).order('updated_at', { ascending: false });
+    const { data, error } = await query.order('updated_at', { ascending: false });
 
     if (error) throw error;
     res.json({ success: true, projects: data || [] });
@@ -49,11 +59,13 @@ router.get('/:id', requireAuth, async (req, res) => {
 
 // POST nuovo progetto
 router.post('/', requireAuth, async (req, res) => {
-  const { name, description, market, stage, priority, supplier, weight_format, cost_per_unit, photo_url, notes, country_code, country, client } = req.body;
+  const { name, description, market, stage, priority, origin,
+          supplier, weight_format, cost_per_unit, photo_url,
+          notes, country_code, country, client } = req.body;
 
-  if (!name) {
-    return res.status(400).json({ error: 'Nome progetto richiesto' });
-  }
+  if (!name) return res.status(400).json({ error: 'Nome progetto richiesto' });
+
+  const finalStage = stage || 'idea';
 
   try {
     const { data, error } = await supabase
@@ -62,8 +74,9 @@ router.post('/', requireAuth, async (req, res) => {
         name,
         description: description || '',
         market: market || 'Retail',
-        stage: stage || 'idea',
-        priority: priority || 'media',
+        stage: finalStage,
+        priority: finalStage === 'idea' ? (priority || 'media') : null,
+        origin: origin || null,
         supplier: supplier || null,
         weight_format: weight_format || null,
         cost_per_unit: cost_per_unit || null,
@@ -72,6 +85,7 @@ router.post('/', requireAuth, async (req, res) => {
         country_code: country_code || null,
         country: country || null,
         client: client || null,
+        dev_steps: finalStage === 'sviluppo' ? DEFAULT_DEV_STEPS : [],
         owner_id: req.profile.id,
         created_by: req.profile.id
       })
@@ -86,11 +100,23 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
-// PATCH aggiorna progetto
+// PATCH aggiorna progetto (dati generali)
 router.patch('/:id', requireAuth, async (req, res) => {
-  const { name, description, market, stage, priority, supplier, weight_format, cost_per_unit, photo_url, notes, country_code, country, client } = req.body;
+  const { name, description, market, stage, priority, origin,
+          supplier, weight_format, cost_per_unit, photo_url,
+          notes, country_code, country, client, dev_steps } = req.body;
 
   try {
+    // Se cambia stage a sviluppo e non ha dev_steps → inizializza
+    let stepsUpdate = {};
+    if (stage === 'sviluppo' && dev_steps === undefined) {
+      const { data: current } = await supabase
+        .from('projects').select('dev_steps, stage').eq('id', req.params.id).single();
+      if (current && current.stage !== 'sviluppo' && (!current.dev_steps || current.dev_steps.length === 0)) {
+        stepsUpdate = { dev_steps: DEFAULT_DEV_STEPS };
+      }
+    }
+
     const { data, error } = await supabase
       .from('projects')
       .update({
@@ -98,7 +124,9 @@ router.patch('/:id', requireAuth, async (req, res) => {
         ...(description !== undefined && { description }),
         ...(market && { market }),
         ...(stage && { stage }),
-        ...(priority && { priority }),
+        // priority solo per idea
+        ...(stage === 'idea' && priority ? { priority } : stage && stage !== 'idea' ? { priority: null } : priority ? { priority } : {}),
+        ...(origin !== undefined && { origin }),
         ...(supplier !== undefined && { supplier }),
         ...(weight_format !== undefined && { weight_format }),
         ...(cost_per_unit !== undefined && { cost_per_unit }),
@@ -106,7 +134,9 @@ router.patch('/:id', requireAuth, async (req, res) => {
         ...(notes !== undefined && { notes }),
         ...(country_code !== undefined && { country_code }),
         ...(country !== undefined && { country }),
-        ...(client !== undefined && { client })
+        ...(client !== undefined && { client }),
+        ...(dev_steps !== undefined && { dev_steps }),
+        ...stepsUpdate,
       })
       .eq('id', req.params.id)
       .select()
@@ -120,52 +150,32 @@ router.patch('/:id', requireAuth, async (req, res) => {
   }
 });
 
-// DELETE progetto
-router.delete('/:id', requireAuth, async (req, res) => {
+// PATCH aggiorna solo dev_steps (ottimizzato per checklist frequente)
+router.patch('/:id/steps', requireAuth, async (req, res) => {
+  const { dev_steps } = req.body;
+  if (!dev_steps) return res.status(400).json({ error: 'dev_steps richiesto' });
+
   try {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('projects')
-      .delete()
-      .eq('id', req.params.id);
+      .update({ dev_steps })
+      .eq('id', req.params.id)
+      .select('id, dev_steps')
+      .single();
 
     if (error) throw error;
-    res.json({ success: true });
+    res.json({ success: true, dev_steps: data.dev_steps });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// GET dashboard stats (come Excel)
-router.get('/stats/overview', requireAuth, async (req, res) => {
+// DELETE progetto
+router.delete('/:id', requireAuth, async (req, res) => {
   try {
-    const { data: total } = await supabase
-      .from('projects')
-      .select('id', { count: 'exact' });
-
-    const { data: ready } = await supabase
-      .from('projects')
-      .select('id', { count: 'exact' })
-      .eq('stage', 'pronto');
-
-    const { data: highPriority } = await supabase
-      .from('projects')
-      .select('id', { count: 'exact' })
-      .eq('priority', 'alta');
-
-    const { data: development } = await supabase
-      .from('projects')
-      .select('id', { count: 'exact' })
-      .eq('stage', 'sviluppo');
-
-    res.json({
-      success: true,
-      stats: {
-        total: total?.length || 0,
-        ready: ready?.length || 0,
-        highPriority: highPriority?.length || 0,
-        inDevelopment: development?.length || 0
-      }
-    });
+    const { error } = await supabase.from('projects').delete().eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
