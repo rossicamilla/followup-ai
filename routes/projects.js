@@ -10,10 +10,8 @@ router.get('/', requireAuth, async (req, res) => {
     const { data, error } = await sb
       .from('projects')
       .select(`
-        *,
-        owner:profiles!owner_id(id, full_name),
+        id, name, description, status, priority, due_date, budget, notes, owner_id, created_by, created_at, updated_at,
         milestones(id, title, completed, due_date),
-        project_members(user_id, role, member:profiles!user_id(full_name)),
         project_tasks(id, status, priority, assigned_to)
       `)
       .order('created_at', { ascending: false });
@@ -27,7 +25,7 @@ router.get('/', requireAuth, async (req, res) => {
 router.get('/admin/overview', requireAuth, requireRole('admin', 'manager'), async (req, res) => {
   try {
     const [projectsRes, tasksRes] = await Promise.all([
-      sb.from('projects').select('id, name, status, priority, due_date, owner_id, owner:profiles!owner_id(full_name)'),
+      sb.from('projects').select('id, name, status, priority, due_date, owner_id'),
       sb.from('project_tasks').select('project_id, status, priority, assigned_to, due_date')
     ]);
 
@@ -67,12 +65,11 @@ router.get('/:id', requireAuth, async (req, res) => {
       .from('projects')
       .select(`
         *,
-        owner:profiles!owner_id(id, full_name, role),
-        milestones(*, created_by_profile:profiles!created_by(full_name)),
-        project_members(user_id, role, member:profiles!user_id(id, full_name, role)),
-        project_contacts(contact_id, role, contact:contacts!contact_id(id, name, company, stage)),
-        project_notes(*, author:profiles!created_by(full_name)),
-        project_tasks(*, assignee:profiles!assigned_to(full_name))
+        milestones(*),
+        project_members(user_id, role),
+        project_contacts(contact_id, role),
+        project_notes(*),
+        project_tasks(*)
       `)
       .eq('id', req.params.id)
       .single();
