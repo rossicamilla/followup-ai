@@ -42,7 +42,6 @@ const COLUMNS = [
     nextLabel: 'Proponi →',
   },
 ]
-const colMap = Object.fromEntries(COLUMNS.map(c => [c.key, c]))
 
 const MARKETS = ['Retail', 'Horeca', 'Export', 'Interno']
 const MARKET_COLORS = {
@@ -61,6 +60,7 @@ const ORIGIN_COLORS = {
   interna: 'bg-teal-100 text-teal-700',
 }
 const ORIGIN_LABELS = { cliente: 'Richiesta cliente', interna: 'Opportunità interna' }
+const PRI_ORDER = { alta: 0, media: 1, bassa: 2 }
 
 const DEFAULT_DEV_STEPS = [
   { id: '1', title: 'Ricerca fornitore',     completed: false },
@@ -239,7 +239,7 @@ function IdeaModal({ project, onClose, onSaved, onDeleted }) {
   )
 }
 
-// ── Modal Pronto (form semplificato) ──────────────────────────────────────────
+// ── Modal Pronto ──────────────────────────────────────────────────────────────
 function ProntoModal({ project, onClose, onSaved, onDeleted, onProponi }) {
   const { profile } = useApp()
   const [form, setForm] = useState({
@@ -371,22 +371,28 @@ function ProntoModal({ project, onClose, onSaved, onDeleted, onProponi }) {
   )
 }
 
-// ── Pannello Sviluppo (inline) ────────────────────────────────────────────────
-function SviluppoPanel({ project, onClose, onSaved, onDeleted, onAdvance }) {
+// ── Vista Sviluppo (full-page) ────────────────────────────────────────────────
+function SviluppoView({ project: initialProject, onBack, onSaved, onDeleted, onAdvance }) {
   const { profile } = useApp()
+  const [project, setProject] = useState(initialProject)
   const [steps, setSteps] = useState(
-    project.dev_steps?.length ? project.dev_steps : DEFAULT_DEV_STEPS
+    initialProject.dev_steps?.length ? initialProject.dev_steps : DEFAULT_DEV_STEPS
   )
   const [newStepTitle, setNewStepTitle] = useState('')
-  const [saving, setSaving] = useState(false)
   const [advancing, setAdvancing] = useState(false)
   const [editingName, setEditingName] = useState(false)
-  const [name, setName] = useState(project.name)
-  const [notes, setNotes] = useState(project.notes || '')
+  const [name, setName] = useState(initialProject.name)
+  const [notes, setNotes] = useState(initialProject.notes || '')
 
   const done = steps.filter(s => s.completed).length
   const pct = steps.length ? Math.round(done / steps.length * 100) : 0
   const allDone = steps.length > 0 && done === steps.length
+
+  function syncUp(updated) {
+    const merged = { ...project, dev_steps: updated }
+    setProject(merged)
+    onSaved(merged)
+  }
 
   async function toggleStep(id) {
     const updated = steps.map(s =>
@@ -394,7 +400,7 @@ function SviluppoPanel({ project, onClose, onSaved, onDeleted, onAdvance }) {
     )
     setSteps(updated)
     await api(`/api/projects/${project.id}/steps`, { method: 'PATCH', body: { dev_steps: updated } })
-    onSaved({ ...project, dev_steps: updated })
+    syncUp(updated)
   }
 
   async function addStep(e) {
@@ -405,26 +411,30 @@ function SviluppoPanel({ project, onClose, onSaved, onDeleted, onAdvance }) {
     setSteps(updated)
     setNewStepTitle('')
     await api(`/api/projects/${project.id}/steps`, { method: 'PATCH', body: { dev_steps: updated } })
-    onSaved({ ...project, dev_steps: updated })
+    syncUp(updated)
   }
 
   async function removeStep(id) {
     const updated = steps.filter(s => s.id !== id)
     setSteps(updated)
     await api(`/api/projects/${project.id}/steps`, { method: 'PATCH', body: { dev_steps: updated } })
-    onSaved({ ...project, dev_steps: updated })
+    syncUp(updated)
   }
 
   async function saveName() {
     if (!name.trim() || name === project.name) { setEditingName(false); return }
     await api(`/api/projects/${project.id}`, { method: 'PATCH', body: { name } })
-    onSaved({ ...project, name })
+    const updated = { ...project, name }
+    setProject(updated)
+    onSaved(updated)
     setEditingName(false)
   }
 
   async function saveNotes() {
     await api(`/api/projects/${project.id}`, { method: 'PATCH', body: { notes } })
-    onSaved({ ...project, notes })
+    const updated = { ...project, notes }
+    setProject(updated)
+    onSaved(updated)
   }
 
   async function advance() {
@@ -432,7 +442,7 @@ function SviluppoPanel({ project, onClose, onSaved, onDeleted, onAdvance }) {
     try {
       const d = await api(`/api/projects/${project.id}`, { method: 'PATCH', body: { stage: 'pronto' } })
       onAdvance(d.project)
-      onClose()
+      onBack()
     } catch (err) { alert(err.message) }
     setAdvancing(false)
   }
@@ -441,36 +451,48 @@ function SviluppoPanel({ project, onClose, onSaved, onDeleted, onAdvance }) {
     if (!confirm(`Eliminare "${project.name}"?`)) return
     await api(`/api/projects/${project.id}`, { method: 'DELETE' })
     onDeleted(project.id)
-    onClose()
+    onBack()
   }
 
   return (
-    <div className="flex flex-col h-full bg-white border-l border-warm-200 w-80 flex-shrink-0 overflow-hidden">
-      {/* Header pannello */}
-      <div className="px-4 py-3.5 bg-blue-50 border-b border-blue-200 flex items-start gap-2 flex-shrink-0">
-        <div className="flex-1 min-w-0">
-          {editingName ? (
-            <input value={name} onChange={e => setName(e.target.value)}
-              onBlur={saveName} onKeyDown={e => { if (e.key === 'Enter') saveName() }} autoFocus
-              className="w-full text-sm font-700 text-warm-900 border border-blue-300 rounded px-2 py-0.5 focus:outline-none"/>
-          ) : (
-            <div className="font-700 text-sm text-warm-900 leading-snug cursor-pointer hover:text-blue-700 transition-colors truncate"
-              onClick={() => setEditingName(true)} title="Clicca per modificare">
-              {project.name}
-            </div>
-          )}
-          {project.market && <span className={`text-2xs font-700 px-1.5 py-0.5 rounded-full mt-0.5 inline-block ${MARKET_COLORS[project.market] || ''}`}>{project.market}</span>}
-        </div>
-        <button onClick={onClose} className="text-warm-400 hover:text-warm-700 p-0.5 flex-shrink-0 mt-0.5">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4"><path d="M3 3l10 10M13 3L3 13"/></svg>
+    <div className="flex flex-col h-full overflow-hidden bg-white">
+      {/* Header */}
+      <div className="px-6 py-4 bg-blue-50 border-b border-blue-200 flex items-center gap-3 flex-shrink-0">
+        <button onClick={onBack}
+          className="flex items-center gap-1.5 text-xs font-600 text-blue-600 hover:text-blue-800 transition-colors">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4"><path d="M10 3L5 8l5 5"/></svg>
+          Progetti
+        </button>
+        <span className="text-warm-300">/</span>
+        {editingName ? (
+          <input value={name} onChange={e => setName(e.target.value)}
+            onBlur={saveName} onKeyDown={e => { if (e.key === 'Enter') saveName() }} autoFocus
+            className="font-700 text-sm text-warm-900 border border-blue-300 rounded px-2 py-0.5 focus:outline-none bg-white"/>
+        ) : (
+          <span className="font-700 text-sm text-warm-900 cursor-pointer hover:text-blue-700 transition-colors"
+            onClick={() => setEditingName(true)} title="Clicca per modificare">
+            {project.name}
+          </span>
+        )}
+        <span className="text-2xs font-700 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">Sviluppo</span>
+        {project.market && <MarketBadge market={project.market}/>}
+        <div className="flex-1"/>
+        {profile?.role === 'admin' && (
+          <button onClick={del} className="text-xs text-red-400 hover:text-red-600 border border-red-200 rounded-lg px-3 py-1.5">
+            Elimina
+          </button>
+        )}
+        <button onClick={advance} disabled={advancing}
+          className={`text-sm font-700 rounded-lg px-5 py-2 transition-all flex items-center gap-2 ${allDone ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'bg-blue-100 hover:bg-blue-200 text-blue-700'} disabled:opacity-40`}>
+          {advancing ? '...' : <><span>Pronto</span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5"><path d="M3 8h10M9 4l4 4-4 4"/></svg></>}
         </button>
       </div>
 
-      {/* Progress bar */}
-      <div className="px-4 py-3 border-b border-warm-100 flex-shrink-0">
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="text-xs text-warm-500">{done} di {steps.length} completati</span>
-          <span className="text-xs font-700 text-blue-600">{pct}%</span>
+      {/* Barra progresso */}
+      <div className="px-6 py-3 border-b border-warm-100 flex-shrink-0 bg-white">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs text-warm-500">{done} di {steps.length} step completati</span>
+          <span className="text-sm font-700 text-blue-600">{pct}%</span>
         </div>
         <div className="h-2 bg-warm-100 rounded-full overflow-hidden">
           <div className="h-full rounded-full transition-all duration-500"
@@ -478,58 +500,64 @@ function SviluppoPanel({ project, onClose, onSaved, onDeleted, onAdvance }) {
         </div>
       </div>
 
-      {/* Steps */}
-      <div className="flex-1 overflow-y-auto p-4 scrollbar-none space-y-1">
-        {steps.map((step, i) => (
-          <div key={step.id} className="flex items-center gap-2.5 group py-1">
-            <button onClick={() => toggleStep(step.id)}
-              className={`w-4.5 h-4.5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-all ${step.completed ? 'bg-emerald-500 border-emerald-500' : 'border-warm-300 hover:border-blue-400'}`}>
-              {step.completed && <svg viewBox="0 0 10 10" fill="none" className="w-2.5 h-2.5"><path d="M2 5l2.5 2.5L8 3" stroke="#fff" strokeWidth="1.5"/></svg>}
-            </button>
-            <span className={`flex-1 text-sm transition-colors ${step.completed ? 'line-through text-warm-300' : 'text-warm-800'}`}>
-              {step.title}
-            </span>
-            {profile?.role === 'admin' && (
-              <button onClick={() => removeStep(step.id)}
-                className="opacity-0 group-hover:opacity-100 text-warm-300 hover:text-red-400 transition-all p-0.5">
-                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+      {/* Contenuto principale */}
+      <div className="flex-1 overflow-y-auto scrollbar-none">
+        <div className="max-w-2xl mx-auto px-6 py-6 space-y-3">
+
+          {/* Step cards */}
+          {steps.map((step, i) => (
+            <div key={step.id}
+              className={`flex items-center gap-4 p-4 rounded-xl border transition-all group ${step.completed ? 'bg-warm-50 border-warm-100' : 'bg-white border-warm-200 hover:border-blue-200 hover:shadow-sm'}`}>
+              <button onClick={() => toggleStep(step.id)}
+                className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all ${step.completed ? 'bg-emerald-500 border-emerald-500' : 'border-warm-300 hover:border-blue-400'}`}>
+                {step.completed && (
+                  <svg viewBox="0 0 10 10" fill="none" className="w-3 h-3">
+                    <path d="M2 5l2.5 2.5L8 3" stroke="#fff" strokeWidth="1.5"/>
+                  </svg>
+                )}
               </button>
-            )}
+              <div className="flex-1 min-w-0">
+                <span className={`text-sm font-500 transition-colors ${step.completed ? 'line-through text-warm-400' : 'text-warm-900'}`}>
+                  {step.title}
+                </span>
+                {step.completed && step.completed_at && (
+                  <div className="text-2xs text-warm-300 mt-0.5">
+                    {new Date(step.completed_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })}
+                  </div>
+                )}
+              </div>
+              <span className={`text-2xs font-700 px-2 py-0.5 rounded-full ${step.completed ? 'bg-emerald-100 text-emerald-600' : 'bg-warm-100 text-warm-400'}`}>
+                {step.completed ? 'Fatto' : `Step ${i + 1}`}
+              </span>
+              {profile?.role === 'admin' && (
+                <button onClick={() => removeStep(step.id)}
+                  className="opacity-0 group-hover:opacity-100 text-warm-300 hover:text-red-400 transition-all p-1">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+                </button>
+              )}
+            </div>
+          ))}
+
+          {/* Aggiungi step */}
+          <form onSubmit={addStep} className="flex items-center gap-3 p-4 rounded-xl border border-dashed border-warm-200 hover:border-blue-300 transition-colors">
+            <div className="w-5 h-5 rounded-full border-2 border-dashed border-warm-300 flex-shrink-0"/>
+            <input value={newStepTitle} onChange={e => setNewStepTitle(e.target.value)}
+              placeholder="Aggiungi nuovo step..."
+              className="flex-1 text-sm text-warm-600 bg-transparent focus:outline-none placeholder-warm-300"/>
+            <button type="submit" disabled={!newStepTitle.trim()}
+              className="text-xs font-600 bg-blue-100 text-blue-700 hover:bg-blue-200 disabled:opacity-30 px-3 py-1.5 rounded-lg transition-colors">
+              Aggiungi
+            </button>
+          </form>
+
+          {/* Note */}
+          <div className="mt-6 pt-6 border-t border-warm-100">
+            <label className="text-xs font-700 text-warm-400 mb-3 block uppercase tracking-wider">Note interne</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} onBlur={saveNotes} rows={4}
+              placeholder="Aggiungi note sul progetto..."
+              className="w-full text-sm border border-warm-200 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-300 bg-warm-50 resize-none"/>
           </div>
-        ))}
-
-        {/* Aggiungi step */}
-        <form onSubmit={addStep} className="flex items-center gap-2 mt-3 pt-3 border-t border-warm-100">
-          <input value={newStepTitle} onChange={e => setNewStepTitle(e.target.value)}
-            placeholder="Aggiungi step..."
-            className="flex-1 text-xs border border-warm-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-blue-400 bg-warm-50"/>
-          <button type="submit" disabled={!newStepTitle.trim()}
-            className="text-blue-500 hover:text-blue-700 disabled:opacity-30 p-1">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M8 3v10M3 8h10"/></svg>
-          </button>
-        </form>
-
-        {/* Note */}
-        <div className="mt-4 pt-4 border-t border-warm-100">
-          <label className="text-xs font-600 text-warm-400 mb-1.5 block uppercase tracking-wider">Note</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} onBlur={saveNotes} rows={3}
-            placeholder="Note interne..."
-            className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400 bg-warm-50 resize-none"/>
         </div>
-      </div>
-
-      {/* Footer pannello */}
-      <div className="px-4 py-3 border-t border-warm-100 flex gap-2 flex-shrink-0">
-        {profile?.role === 'admin' && (
-          <button onClick={del} className="text-xs text-red-400 hover:text-red-600 border border-red-200 rounded-lg px-3 py-1.5">
-            Elimina
-          </button>
-        )}
-        <div className="flex-1"/>
-        <button onClick={advance} disabled={advancing}
-          className={`text-xs font-700 rounded-lg px-4 py-1.5 transition-all flex items-center gap-1.5 ${allDone ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'bg-blue-100 hover:bg-blue-200 text-blue-700'} disabled:opacity-40`}>
-          {advancing ? '...' : <><span>Pronto</span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3"><path d="M3 8h10M9 4l4 4-4 4"/></svg></>}
-        </button>
       </div>
     </div>
   )
@@ -551,11 +579,10 @@ function ProjectCard({ project, col, onClick, onAdvance, onProponi }) {
   }
 
   const steps = project.dev_steps || []
-  const done = steps.filter(s => s.completed).length
 
   return (
     <div onClick={onClick}
-      className={`bg-white rounded-xl border border-l-4 border-warm-200 ${col.cardBorder} p-3 cursor-pointer hover:shadow-md transition-all group/card`}>
+      className={`bg-white rounded-xl border border-l-4 border-warm-200 ${col.cardBorder} p-3 cursor-pointer hover:shadow-md transition-all`}>
 
       <div className="font-600 text-sm text-warm-900 mb-1.5 leading-snug">{project.name}</div>
 
@@ -569,13 +596,12 @@ function ProjectCard({ project, col, onClick, onAdvance, onProponi }) {
       {project.supplier && <div className="text-xs text-warm-500"><span className="text-warm-300">Forn. </span>{project.supplier}</div>}
       {project.client && <div className="text-xs text-warm-500"><span className="text-warm-300">Buy. </span>{project.client}</div>}
 
-      {/* Progress bar per sviluppo */}
       {col.key === 'sviluppo' && steps.length > 0 && <StepProgress steps={steps}/>}
 
-      {/* Bottone avanzamento */}
+      {/* Bottone avanzamento — sempre visibile */}
       <div className="mt-2.5 pt-2 border-t border-warm-100 flex justify-end">
         <button onClick={handleAdvance} disabled={advancing}
-          className={`text-2xs font-700 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 opacity-0 group-hover/card:opacity-100
+          className={`text-2xs font-700 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1
             ${col.key === 'pronto' ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}
             disabled:opacity-30`}>
           {advancing ? '...' : col.nextLabel}
@@ -590,8 +616,8 @@ export default function Projects({ onProponiPipeline }) {
   const { profile } = useApp()
   const [projects, setProjects]       = useState([])
   const [loading, setLoading]         = useState(true)
-  const [modal, setModal]             = useState(null) // { type: 'idea'|'pronto', project }
-  const [sviluppoPanel, setSviluppoPanel] = useState(null) // project
+  const [modal, setModal]             = useState(null)
+  const [sviluppoView, setSviluppoView] = useState(null) // progetto aperto in vista dettaglio
   const [filterMarket, setFilterMarket] = useState('')
   const [syncing, setSyncing]         = useState(false)
   const [deduping, setDeduping]       = useState(false)
@@ -609,12 +635,11 @@ export default function Projects({ onProponiPipeline }) {
 
   function handleSaved(project) {
     setProjects(prev => prev.map(p => p.id === project.id ? { ...p, ...project } : p))
-    if (sviluppoPanel?.id === project.id) setSviluppoPanel(prev => ({ ...prev, ...project }))
   }
   function handleCreated(project) { setProjects(prev => [project, ...prev]) }
   function handleDeleted(id) {
     setProjects(prev => prev.filter(p => p.id !== id))
-    if (sviluppoPanel?.id === id) setSviluppoPanel(null)
+    if (sviluppoView?.id === id) setSviluppoView(null)
   }
   function handleAdvanced(project) {
     setProjects(prev => prev.map(p => p.id === project.id ? { ...p, ...project } : p))
@@ -639,6 +664,19 @@ export default function Projects({ onProponiPipeline }) {
       setSyncResult({ ok: true, ...r }); load()
     } catch (err) { setSyncResult({ ok: false, error: err.message }) }
     setSyncing(false)
+  }
+
+  // Se è aperta la vista sviluppo, mostra quella al posto del kanban
+  if (sviluppoView) {
+    return (
+      <SviluppoView
+        project={sviluppoView}
+        onBack={() => setSviluppoView(null)}
+        onSaved={p => { handleSaved(p); setSviluppoView(prev => ({ ...prev, ...p })) }}
+        onDeleted={handleDeleted}
+        onAdvance={p => { handleAdvanced(p); setSviluppoView(null) }}
+      />
+    )
   }
 
   const colCounts = Object.fromEntries(
@@ -706,63 +744,55 @@ export default function Projects({ onProponiPipeline }) {
         </div>
       )}
 
-      {/* Kanban + pannello sviluppo */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Kanban */}
-        <div className="flex flex-1 overflow-x-auto scrollbar-none bg-warm-50">
-          {COLUMNS.map(col => {
-            const cards = filtered.filter(p =>
-              p.stage === col.key || (col.key === 'sviluppo' && p.stage === 'test')
+      {/* Kanban */}
+      <div className="flex flex-1 overflow-x-auto scrollbar-none bg-warm-50">
+        {COLUMNS.map(col => {
+          let cards = filtered.filter(p =>
+            p.stage === col.key || (col.key === 'sviluppo' && p.stage === 'test')
+          )
+          // Ordina le idee per priorità: alta → media → bassa
+          if (col.key === 'idea') {
+            cards = [...cards].sort((a, b) =>
+              (PRI_ORDER[a.priority] ?? 99) - (PRI_ORDER[b.priority] ?? 99)
             )
-            return (
-              <div key={col.key} className="flex-1 min-w-[240px] flex flex-col border-r border-warm-200 last:border-r-0">
-                <div className={`px-3 py-3 ${col.headerBg} border-b ${col.border} flex items-center gap-2 flex-shrink-0`}>
-                  <div className={`w-2 h-2 rounded-full ${col.dot}`}/>
-                  <span className={`text-xs font-700 uppercase tracking-widest ${col.color}`}>{col.label}</span>
-                  <span className={`ml-auto text-xs font-700 ${col.color} bg-white/60 px-2 py-0.5 rounded-full`}>{cards.length}</span>
-                </div>
-                <div className="flex-1 overflow-y-auto p-2 scrollbar-none">
-                  {loading && [1,2].map(i => <div key={i} className="bg-white rounded-xl border border-warm-200 p-3 mb-2 animate-pulse h-20"/>)}
-                  {!loading && (
-                    <div className="space-y-2">
-                      {cards.map(p => (
-                        <ProjectCard key={p.id} project={p} col={col}
-                          onClick={() => {
-                            if (col.key === 'sviluppo') {
-                              setSviluppoPanel(prev => prev?.id === p.id ? null : p)
-                            } else if (col.key === 'idea') {
-                              setModal({ type: 'idea', project: p })
-                            } else {
-                              setModal({ type: 'pronto', project: p })
-                            }
-                          }}
-                          onAdvance={handleAdvanced}
-                          onProponi={p => { onProponiPipeline?.(p) }}
-                        />
-                      ))}
-                      {cards.length === 0 && (
-                        <div className={`text-xs ${col.emptyColor} opacity-40 text-center py-10 border-2 border-dashed ${col.border} rounded-xl`}>
-                          Nessun progetto
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+          }
+          return (
+            <div key={col.key} className="flex-1 min-w-[240px] flex flex-col border-r border-warm-200 last:border-r-0">
+              <div className={`px-3 py-3 ${col.headerBg} border-b ${col.border} flex items-center gap-2 flex-shrink-0`}>
+                <div className={`w-2 h-2 rounded-full ${col.dot}`}/>
+                <span className={`text-xs font-700 uppercase tracking-widest ${col.color}`}>{col.label}</span>
+                <span className={`ml-auto text-xs font-700 ${col.color} bg-white/60 px-2 py-0.5 rounded-full`}>{cards.length}</span>
               </div>
-            )
-          })}
-        </div>
-
-        {/* Pannello sviluppo */}
-        {sviluppoPanel && (
-          <SviluppoPanel
-            project={sviluppoPanel}
-            onClose={() => setSviluppoPanel(null)}
-            onSaved={handleSaved}
-            onDeleted={handleDeleted}
-            onAdvance={handleAdvanced}
-          />
-        )}
+              <div className="flex-1 overflow-y-auto p-2 scrollbar-none">
+                {loading && [1,2].map(i => <div key={i} className="bg-white rounded-xl border border-warm-200 p-3 mb-2 animate-pulse h-20"/>)}
+                {!loading && (
+                  <div className="space-y-2">
+                    {cards.map(p => (
+                      <ProjectCard key={p.id} project={p} col={col}
+                        onClick={() => {
+                          if (col.key === 'sviluppo') {
+                            setSviluppoView(p)
+                          } else if (col.key === 'idea') {
+                            setModal({ type: 'idea', project: p })
+                          } else {
+                            setModal({ type: 'pronto', project: p })
+                          }
+                        }}
+                        onAdvance={handleAdvanced}
+                        onProponi={p => { onProponiPipeline?.(p) }}
+                      />
+                    ))}
+                    {cards.length === 0 && (
+                      <div className={`text-xs ${col.emptyColor} opacity-40 text-center py-10 border-2 border-dashed ${col.border} rounded-xl`}>
+                        Nessun progetto
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       {/* Modals */}
