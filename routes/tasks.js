@@ -14,7 +14,7 @@ router.get('/', requireAuth, async (req, res) => {
         priority, contact_id, project_id, opportunity_id, ai_generated, created_by,
         contact:contacts(name, company),
         project:projects(id, name),
-        opportunity:pipeline(id, contact_name, contact:contacts(name), project:projects(name)),
+        opportunity:project_pipeline(id, contact_name, contact:contacts(name), project:projects(name)),
         assigned_to:profiles!tasks_assigned_to_fkey(id, full_name, role)
       `)
       .order('due_date', { ascending: true, nullsLast: true });
