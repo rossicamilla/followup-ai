@@ -718,7 +718,7 @@ function ProjectCard({ project, col, onClick, onAdvance, onProponi }) {
         {/* Drag handle */}
         <div {...listeners}
           onClick={e => e.stopPropagation()}
-          className="opacity-0 group-hover/card:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-1 rounded-lg hover:bg-black/5 touch-none flex-shrink-0 -mr-1 -mt-0.5">
+          className="cursor-grab active:cursor-grabbing p-1 rounded-lg hover:bg-black/5 touch-none flex-shrink-0 -mr-1 -mt-0.5">
           <svg viewBox="0 0 8 14" fill="currentColor" className="w-2.5 h-3.5 text-warm-400">
             <circle cx="2" cy="2" r="1.1"/><circle cx="6" cy="2" r="1.1"/>
             <circle cx="2" cy="7" r="1.1"/><circle cx="6" cy="7" r="1.1"/>

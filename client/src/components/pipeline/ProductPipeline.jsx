@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react'
 import { api } from '../../lib/api'
 import { useApp } from '../../App'
+import {
+  DndContext, PointerSensor, TouchSensor, useSensor, useSensors,
+  useDroppable, useDraggable,
+} from '@dnd-kit/core'
 
 const STAGES = [
   {
@@ -291,6 +295,17 @@ function AgentUpdateModal({ opp, onClose, onSaved }) {
 const STAGE_NEXT = { proposto: 'campione', campione: 'offerta', offerta: 'ordine' }
 const STAGE_NEXT_LABEL = { proposto: 'Campione →', campione: 'Offerta →', offerta: 'Ordine →' }
 
+// ── Droppable column ──────────────────────────────────────────────────────────
+function DroppableColumn({ id, children }) {
+  const { setNodeRef, isOver } = useDroppable({ id })
+  return (
+    <div ref={setNodeRef}
+      className={`flex-1 overflow-y-auto p-2 scrollbar-none transition-colors rounded-b-lg ${isOver ? 'bg-white/60 ring-2 ring-inset ring-brand-300' : ''}`}>
+      {children}
+    </div>
+  )
+}
+
 // ── Card opportunità ──────────────────────────────────────────────────────────
 function OppCard({ opp, stage, onClick, onAdvanced, onClose }) {
   const [advancing, setAdvancing] = useState(false)
@@ -298,6 +313,14 @@ function OppCard({ opp, stage, onClick, onAdvanced, onClose }) {
   const clientLabel = opp.contact?.name || opp.contact_name || '—'
   const clientCompany = opp.contact?.company
   const nextStage = STAGE_NEXT[opp.stage]
+
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: opp.id,
+    data: { stage: opp.stage },
+  })
+  const dragStyle = transform
+    ? { transform: `translate3d(${transform.x}px,${transform.y}px,0)`, zIndex: 50 }
+    : undefined
 
   async function handleAdvance(e) {
     e.stopPropagation()
@@ -318,7 +341,9 @@ function OppCard({ opp, stage, onClick, onAdvanced, onClose }) {
   }
 
   return (
-    <div onClick={onClick}
+    <div ref={setNodeRef} style={{ ...dragStyle, opacity: isDragging ? 0.45 : 1 }}
+      {...attributes}
+      onClick={onClick}
       className={`bg-white rounded-xl border border-l-4 border-warm-200 ${stage.cardBorder} p-3.5 cursor-pointer hover:shadow-md transition-all`}>
       {/* Cliente in evidenza */}
       <div className="flex items-center gap-2 mb-2">
@@ -328,6 +353,16 @@ function OppCard({ opp, stage, onClick, onAdvanced, onClose }) {
         <div className="flex-1 min-w-0">
           <div className="text-sm font-700 text-warm-900 truncate">{clientLabel}</div>
           {clientCompany && <div className="text-2xs text-warm-400 truncate">{clientCompany}</div>}
+        </div>
+        {/* Drag handle — sempre visibile */}
+        <div {...listeners}
+          onClick={e => e.stopPropagation()}
+          className="cursor-grab active:cursor-grabbing p-1 rounded-lg hover:bg-warm-100 touch-none flex-shrink-0">
+          <svg viewBox="0 0 8 14" fill="currentColor" className="w-2.5 h-3.5 text-warm-300 hover:text-warm-500 transition-colors">
+            <circle cx="2" cy="2" r="1.1"/><circle cx="6" cy="2" r="1.1"/>
+            <circle cx="2" cy="7" r="1.1"/><circle cx="6" cy="7" r="1.1"/>
+            <circle cx="2" cy="12" r="1.1"/><circle cx="6" cy="12" r="1.1"/>
+          </svg>
         </div>
       </div>
       {/* Prodotto */}
@@ -555,6 +590,11 @@ export default function ProductPipeline({ preProject, onModalClose }) {
   const [projects, setProjects] = useState([])
   const [tab, setTab] = useState('kanban') // 'kanban' | 'storico' | 'stats'
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+  )
+
   useEffect(() => {
     if (preProject) { setTab('kanban'); setModal('new') }
   }, [preProject])
@@ -601,6 +641,20 @@ export default function ProductPipeline({ preProject, onModalClose }) {
 
   function openCard(opp) {
     setModal(isAgent ? { type: 'agent', opp } : opp)
+  }
+
+  async function handleDragEnd({ active, over }) {
+    if (!over) return
+    const newStage = over.id
+    const opp = pipeline.find(o => o.id === active.id)
+    if (!opp || opp.stage === newStage) return
+    const prevStage = opp.stage
+    setPipeline(prev => prev.map(o => o.id === active.id ? { ...o, stage: newStage } : o))
+    try {
+      await api(`/api/pipeline/${active.id}`, { method: 'PATCH', body: { stage: newStage } })
+    } catch (e) {
+      setPipeline(prev => prev.map(o => o.id === active.id ? { ...o, stage: prevStage } : o))
+    }
   }
 
   return (
@@ -665,41 +719,45 @@ export default function ProductPipeline({ preProject, onModalClose }) {
 
       {/* Kanban */}
       {tab === 'kanban' && (
-        <div className="flex flex-1 overflow-x-auto scrollbar-none bg-warm-50">
-          {STAGES.map(stage => {
-            const cards = filtered.filter(o => o.stage === stage.key)
-            return (
-              <div key={stage.key} className={`flex-1 min-w-[220px] flex flex-col border-r border-warm-200 last:border-r-0 ${stage.colBg}`}>
-                <div className={`px-3 py-3 border-b ${stage.colBorder} flex items-center gap-2 flex-shrink-0`}>
-                  <div className={`w-2 h-2 rounded-full ${stage.dot}`}/>
-                  <span className={`text-xs font-700 uppercase tracking-widest ${stage.headerText}`}>{stage.label}</span>
-                  <span className={`ml-auto text-xs font-700 ${stage.headerText} bg-white/80 px-2 py-0.5 rounded-full`}>{cards.length}</span>
-                </div>
-                <div className="flex-1 overflow-y-auto p-2 scrollbar-none">
-                  {loading && [1,2].map(i => (
-                    <div key={i} className="bg-white rounded-xl border border-warm-200 p-3 mb-2 animate-pulse h-20"/>
-                  ))}
-                  {!loading && (
-                    <div className="space-y-2">
-                      {cards.map(o => (
-                        <OppCard key={o.id} opp={o} stage={stage}
-                          onClick={() => openCard(o)}
-                          onAdvanced={opp => setPipeline(prev => prev.map(p => p.id === opp.id ? opp : p))}
-                          onClose={stage.key === 'ordine' ? handleClose : null}
-                        />
-                      ))}
-                      {cards.length === 0 && (
-                        <div className={`text-xs ${stage.headerText} opacity-40 text-center py-10 border-2 border-dashed ${stage.colBorder} rounded-xl`}>
-                          Nessuna opportunità
-                        </div>
-                      )}
+        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+          <div className="flex flex-1 overflow-x-auto scrollbar-none bg-warm-50">
+            {STAGES.map(stage => {
+              const cards = filtered.filter(o => o.stage === stage.key)
+              return (
+                <div key={stage.key} className={`flex-1 min-w-[220px] flex flex-col border-r border-warm-200 last:border-r-0 ${stage.colBg}`}>
+                  <div className={`px-3 py-3 border-b ${stage.colBorder} flex items-center gap-2 flex-shrink-0`}>
+                    <div className={`w-2 h-2 rounded-full ${stage.dot}`}/>
+                    <span className={`text-xs font-700 uppercase tracking-widest ${stage.headerText}`}>{stage.label}</span>
+                    <span className={`ml-auto text-xs font-700 ${stage.headerText} bg-white/80 px-2 py-0.5 rounded-full`}>{cards.length}</span>
+                  </div>
+                  {loading && (
+                    <div className="p-2 space-y-2">
+                      {[1,2].map(i => <div key={i} className="bg-white rounded-xl border border-warm-200 p-3 animate-pulse h-20"/>)}
                     </div>
                   )}
+                  {!loading && (
+                    <DroppableColumn id={stage.key}>
+                      <div className="space-y-2">
+                        {cards.map(o => (
+                          <OppCard key={o.id} opp={o} stage={stage}
+                            onClick={() => openCard(o)}
+                            onAdvanced={opp => setPipeline(prev => prev.map(p => p.id === opp.id ? opp : p))}
+                            onClose={stage.key === 'ordine' ? handleClose : null}
+                          />
+                        ))}
+                        {cards.length === 0 && (
+                          <div className={`text-xs ${stage.headerText} opacity-40 text-center py-10 border-2 border-dashed ${stage.colBorder} rounded-xl`}>
+                            Nessuna opportunità
+                          </div>
+                        )}
+                      </div>
+                    </DroppableColumn>
+                  )}
                 </div>
-              </div>
-            )
-          })}
-        </div>
+              )
+            })}
+          </div>
+        </DndContext>
       )}
 
       {/* Modal admin/manager */}
