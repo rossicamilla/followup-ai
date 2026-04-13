@@ -394,6 +394,8 @@ function SviluppoView({ project: initialProject, onBack, onSaved, onDeleted, onA
   const [editingName, setEditingName] = useState(false)
   const [name, setName] = useState(initialProject.name)
   const [notes, setNotes] = useState(initialProject.notes || '')
+  const [editingStepNotes, setEditingStepNotes] = useState(null) // step id being edited
+  const [stepNotesValue, setStepNotesValue] = useState('')
 
   const done = steps.filter(s => s.completed).length
   const pct = steps.length ? Math.round(done / steps.length * 100) : 0
@@ -446,6 +448,19 @@ function SviluppoView({ project: initialProject, onBack, onSaved, onDeleted, onA
     const updated = { ...project, notes }
     setProject(updated)
     onSaved(updated)
+  }
+
+  function startEditStepNotes(step) {
+    setEditingStepNotes(step.id)
+    setStepNotesValue(step.notes || '')
+  }
+
+  async function saveStepNotes(stepId) {
+    const updated = steps.map(s => s.id === stepId ? { ...s, notes: stepNotesValue } : s)
+    setSteps(updated)
+    setEditingStepNotes(null)
+    await api(`/api/projects/${project.id}/steps`, { method: 'PATCH', body: { dev_steps: updated } })
+    syncUp(updated)
   }
 
   async function advance() {
@@ -547,13 +562,50 @@ function SviluppoView({ project: initialProject, onBack, onSaved, onDeleted, onA
                       Completato {new Date(step.completed_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'long' })}
                     </div>
                   )}
-                  {!step.completed && (
-                    <div className="mt-2">
-                      <button onClick={() => toggleStep(step.id)}
-                        className={`text-xs font-600 px-3 py-1 rounded-lg ${c.badge} hover:opacity-80 transition-opacity`}>
-                        Segna come fatto
-                      </button>
+                  {/* Note dello step */}
+                  {editingStepNotes === step.id ? (
+                    <div className="mt-3">
+                      <textarea
+                        value={stepNotesValue}
+                        onChange={e => setStepNotesValue(e.target.value)}
+                        placeholder="Aggiungi note per questo step..."
+                        rows={3}
+                        autoFocus
+                        className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-300 bg-white resize-none"/>
+                      <div className="flex gap-2 mt-2">
+                        <button onClick={() => saveStepNotes(step.id)}
+                          className="text-xs font-600 bg-blue-500 text-white px-3 py-1 rounded-lg hover:bg-blue-600">
+                          Salva
+                        </button>
+                        <button onClick={() => setEditingStepNotes(null)}
+                          className="text-xs text-warm-400 hover:text-warm-600 px-2 py-1">
+                          Annulla
+                        </button>
+                      </div>
                     </div>
+                  ) : (
+                    <>
+                      {step.notes && (
+                        <div className="mt-2 text-xs text-warm-500 bg-white/60 rounded-lg px-3 py-2 border border-warm-100">
+                          {step.notes}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 mt-2">
+                        {!step.completed && (
+                          <button onClick={() => toggleStep(step.id)}
+                            className={`text-xs font-600 px-3 py-1 rounded-lg ${c.badge} hover:opacity-80 transition-opacity`}>
+                            Segna come fatto
+                          </button>
+                        )}
+                        <button onClick={() => startEditStepNotes(step)}
+                          title="Modifica note"
+                          className="text-warm-300 hover:text-blue-500 transition-colors p-1 rounded-lg hover:bg-blue-50">
+                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+                            <path d="M10.5 2.5l3 3-8 8H2.5v-3l8-8z"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </>
                   )}
                 </div>
                 {/* Elimina */}
@@ -602,6 +654,12 @@ function SviluppoView({ project: initialProject, onBack, onSaved, onDeleted, onA
   )
 }
 
+const IDEA_PRI_CARD = {
+  alta:  { bg: 'bg-red-50',    border: 'border-red-200',    borderL: 'border-l-red-400',    divider: 'border-red-100',   text: 'text-red-900',   sub: 'text-red-400',   btn: 'bg-red-100 text-red-700 hover:bg-red-200'    },
+  media: { bg: 'bg-orange-50', border: 'border-orange-200', borderL: 'border-l-orange-400', divider: 'border-orange-100',text: 'text-orange-900',sub: 'text-orange-400',btn: 'bg-orange-100 text-orange-700 hover:bg-orange-200' },
+  bassa: { bg: 'bg-yellow-50', border: 'border-yellow-200', borderL: 'border-l-yellow-400', divider: 'border-yellow-100',text: 'text-yellow-900',sub: 'text-yellow-500',btn: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' },
+}
+
 // ── Card Kanban ───────────────────────────────────────────────────────────────
 function ProjectCard({ project, col, onClick, onAdvance, onProponi }) {
   const [advancing, setAdvancing] = useState(false)
@@ -618,31 +676,36 @@ function ProjectCard({ project, col, onClick, onAdvance, onProponi }) {
   }
 
   const steps = project.dev_steps || []
+  const pri = col.key === 'idea' ? (IDEA_PRI_CARD[project.priority] || null) : null
 
   return (
     <div onClick={onClick}
-      className={`bg-white rounded-xl border border-l-4 border-warm-200 ${col.cardBorder} p-3 cursor-pointer hover:shadow-md transition-all`}>
+      className={`rounded-xl border border-l-4 p-3 cursor-pointer hover:shadow-md transition-all
+        ${pri
+          ? `${pri.bg} ${pri.border} ${pri.borderL}`
+          : `bg-white border-warm-200 ${col.cardBorder}`
+        }`}>
 
-      <div className="font-600 text-sm text-warm-900 mb-1.5 leading-snug">{project.name}</div>
+      <div className={`font-600 text-sm mb-1.5 leading-snug ${pri ? pri.text : 'text-warm-900'}`}>
+        {project.name}
+      </div>
 
       <div className="flex flex-wrap gap-1 mb-2">
         {project.market && <MarketBadge market={project.market}/>}
-        {col.key === 'idea' && project.priority && <PriBadge priority={project.priority}/>}
         {col.key === 'idea' && project.origin && <OriginBadge origin={project.origin}/>}
       </div>
 
-      {project.weight_format && <div className="text-xs text-warm-400 mb-1">{project.weight_format}</div>}
-      {project.supplier && <div className="text-xs text-warm-500"><span className="text-warm-300">Forn. </span>{project.supplier}</div>}
-      {project.client && <div className="text-xs text-warm-500"><span className="text-warm-300">Buy. </span>{project.client}</div>}
+      {project.weight_format && <div className={`text-xs mb-1 ${pri ? pri.sub : 'text-warm-400'}`}>{project.weight_format}</div>}
+      {project.supplier && <div className={`text-xs ${pri ? pri.sub : 'text-warm-500'}`}><span className="opacity-60">Forn. </span>{project.supplier}</div>}
+      {project.client && <div className={`text-xs ${pri ? pri.sub : 'text-warm-500'}`}><span className="opacity-60">Buy. </span>{project.client}</div>}
 
       {col.key === 'sviluppo' && steps.length > 0 && <StepProgress steps={steps}/>}
 
       {/* Bottone avanzamento — sempre visibile */}
-      <div className="mt-2.5 pt-2 border-t border-warm-100 flex justify-end">
+      <div className={`mt-2.5 pt-2 border-t flex justify-end ${pri ? pri.divider : 'border-warm-100'}`}>
         <button onClick={handleAdvance} disabled={advancing}
-          className={`text-2xs font-700 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1
-            ${col.key === 'pronto' ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}
-            disabled:opacity-30`}>
+          className={`text-2xs font-700 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 disabled:opacity-30
+            ${pri ? pri.btn : col.key === 'pronto' ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}>
           {advancing ? '...' : col.nextLabel}
         </button>
       </div>

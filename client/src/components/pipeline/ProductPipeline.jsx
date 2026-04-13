@@ -131,13 +131,24 @@ function OpportunityModal({ opp, preProject, onClose, onSaved, onDeleted }) {
 
           <div>
             <label className="text-xs font-600 text-warm-500 mb-1 block">Prodotto *</label>
-            <select value={form.project_id} onChange={e => set('project_id', e.target.value)} required
-              className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50">
-              <option value="">Seleziona prodotto...</option>
-              {projects.map(p => <option key={p.id} value={p.id}>{p.name}{p.weight_format ? ` — ${p.weight_format}` : ''}</option>)}
-            </select>
-            {projects.length === 0 && (
-              <p className="text-xs text-warm-400 mt-1">Nessun prodotto in "Pronto". Spostane uno dalla sezione Progetti.</p>
+            {(preProject || opp) ? (
+              <div className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 bg-warm-50 text-warm-700 font-500">
+                {opp?.project?.name || preProject?.name || '—'}
+                {(opp?.project?.weight_format || preProject?.weight_format) && (
+                  <span className="text-warm-400"> — {opp?.project?.weight_format || preProject?.weight_format}</span>
+                )}
+              </div>
+            ) : (
+              <>
+                <select value={form.project_id} onChange={e => set('project_id', e.target.value)} required
+                  className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50">
+                  <option value="">Seleziona prodotto...</option>
+                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}{p.weight_format ? ` — ${p.weight_format}` : ''}</option>)}
+                </select>
+                {projects.length === 0 && (
+                  <p className="text-xs text-warm-400 mt-1">Nessun prodotto in "Pronto". Spostane uno dalla sezione Progetti.</p>
+                )}
+              </>
             )}
           </div>
 
@@ -277,10 +288,34 @@ function AgentUpdateModal({ opp, onClose, onSaved }) {
   )
 }
 
+const STAGE_NEXT = { proposto: 'campione', campione: 'offerta', offerta: 'ordine' }
+const STAGE_NEXT_LABEL = { proposto: 'Campione →', campione: 'Offerta →', offerta: 'Ordine →' }
+
 // ── Card opportunità ──────────────────────────────────────────────────────────
-function OppCard({ opp, stage, onClick }) {
+function OppCard({ opp, stage, onClick, onAdvanced, onClose }) {
+  const [advancing, setAdvancing] = useState(false)
+  const [closing, setClosing] = useState(false)
   const clientLabel = opp.contact?.name || opp.contact_name || '—'
   const clientCompany = opp.contact?.company
+  const nextStage = STAGE_NEXT[opp.stage]
+
+  async function handleAdvance(e) {
+    e.stopPropagation()
+    if (!nextStage) return
+    setAdvancing(true)
+    try {
+      const d = await api(`/api/pipeline/${opp.id}`, { method: 'PATCH', body: { stage: nextStage } })
+      onAdvanced(d.opportunity)
+    } catch (err) { alert(err.message) }
+    setAdvancing(false)
+  }
+
+  async function handleClose(e) {
+    e.stopPropagation()
+    setClosing(true)
+    await onClose(opp)
+    setClosing(false)
+  }
 
   return (
     <div onClick={onClick}
@@ -315,6 +350,194 @@ function OppCard({ opp, stage, onClick }) {
       {opp.notes && (
         <div className="mt-1.5 text-2xs text-warm-400 line-clamp-2">{opp.notes}</div>
       )}
+      {/* Bottoni azione */}
+      {(nextStage || onClose) && (
+        <div className="mt-2.5 pt-2 border-t border-warm-100 flex items-center justify-end gap-1.5">
+          {nextStage && (
+            <button onClick={handleAdvance} disabled={advancing}
+              className={`text-2xs font-700 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 ${stage.badge} hover:opacity-80 disabled:opacity-30`}>
+              {advancing ? '...' : STAGE_NEXT_LABEL[opp.stage]}
+            </button>
+          )}
+          {onClose && (
+            <button onClick={handleClose} disabled={closing}
+              className="text-2xs font-700 px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white transition-all flex items-center gap-1 disabled:opacity-30">
+              {closing
+                ? '...'
+                : <><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3"><path d="M2 6l2.5 2.5L10 3"/></svg> Chiudi ordine</>}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Vista Statistiche ─────────────────────────────────────────────────────────
+function StatsView({ onClose }) {
+  const [stats, setStats] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    api('/api/pipeline/stats')
+      .then(d => setStats(d))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return (
+    <div className="flex-1 flex items-center justify-center">
+      <div className="w-5 h-5 border-2 border-brand-100 border-t-brand-500 rounded-full animate-spin"/>
+    </div>
+  )
+  if (!stats) return null
+
+  const fmt = v => v > 0 ? `€ ${Number(v).toLocaleString('it-IT', { minimumFractionDigits: 0 })}` : '—'
+
+  return (
+    <div className="flex-1 overflow-y-auto scrollbar-none bg-warm-50 p-6 space-y-6">
+
+      {/* KPI */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Ordini chiusi', value: stats.ordiniVinti, color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
+          { label: 'Valore vinto', value: fmt(stats.totaleVinto), color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
+          { label: 'Opportunità attive', value: stats.ordiniAttivi, color: 'text-blue-700', bg: 'bg-blue-50 border-blue-200' },
+          { label: 'Pipeline attiva', value: fmt(stats.totaleAttivo), color: 'text-blue-700', bg: 'bg-blue-50 border-blue-200' },
+        ].map(k => (
+          <div key={k.label} className={`rounded-2xl border p-4 ${k.bg}`}>
+            <div className={`text-2xl font-800 ${k.color}`}>{k.value}</div>
+            <div className="text-xs text-warm-500 mt-1 font-500">{k.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-6">
+        {/* Per prodotto */}
+        <div className="bg-white rounded-2xl border border-warm-200 p-4">
+          <h3 className="text-xs font-700 text-warm-400 uppercase tracking-widest mb-3">Per prodotto</h3>
+          {stats.perProdotto.length === 0 && <p className="text-xs text-warm-300">Nessun dato</p>}
+          <div className="space-y-2">
+            {stats.perProdotto.map(p => (
+              <div key={p.name} className="flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-600 text-warm-800 truncate">{p.name}</div>
+                  <div className="text-2xs text-warm-400">{p.count} ordini</div>
+                </div>
+                <div className="text-xs font-700 text-emerald-700 flex-shrink-0">{fmt(p.value)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Per agente */}
+        <div className="bg-white rounded-2xl border border-warm-200 p-4">
+          <h3 className="text-xs font-700 text-warm-400 uppercase tracking-widest mb-3">Per agente</h3>
+          {stats.perAgente.length === 0 && <p className="text-xs text-warm-300">Nessun dato</p>}
+          <div className="space-y-2">
+            {stats.perAgente.map(a => (
+              <div key={a.name} className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-2xs font-700 flex-shrink-0">
+                  {a.name[0]?.toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-600 text-warm-800 truncate">{a.name}</div>
+                  <div className="text-2xs text-warm-400">{a.count} ordini</div>
+                </div>
+                <div className="text-xs font-700 text-emerald-700 flex-shrink-0">{fmt(a.value)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Per mercato */}
+        <div className="bg-white rounded-2xl border border-warm-200 p-4">
+          <h3 className="text-xs font-700 text-warm-400 uppercase tracking-widest mb-3">Per mercato</h3>
+          {stats.perMercato.length === 0 && <p className="text-xs text-warm-300">Nessun dato</p>}
+          <div className="space-y-2">
+            {stats.perMercato.map(m => (
+              <div key={m.name} className="flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-600 text-warm-800">{m.name}</div>
+                  <div className="text-2xs text-warm-400">{m.count} ordini</div>
+                </div>
+                <div className="text-xs font-700 text-emerald-700 flex-shrink-0">{fmt(m.value)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Vista Storico ─────────────────────────────────────────────────────────────
+function StoricoView() {
+  const [storico, setStorico] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    api('/api/pipeline?storico=true')
+      .then(d => setStorico(d.pipeline || []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const totale = storico.reduce((s, o) => s + (Number(o.value_estimate) || 0), 0)
+
+  return (
+    <div className="flex-1 overflow-y-auto scrollbar-none bg-warm-50 p-6">
+      {loading && (
+        <div className="space-y-2">
+          {[1,2,3].map(i => <div key={i} className="h-16 bg-white rounded-xl border border-warm-200 animate-pulse"/>)}
+        </div>
+      )}
+      {!loading && storico.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-20 text-warm-300 gap-3">
+          <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" strokeWidth="1" className="w-10 h-10 opacity-40">
+            <circle cx="20" cy="20" r="16"/><path d="M20 12v8l5 5"/>
+          </svg>
+          <p className="text-sm">Nessun ordine chiuso ancora</p>
+        </div>
+      )}
+      {!loading && storico.length > 0 && (
+        <>
+          {totale > 0 && (
+            <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-center justify-between">
+              <span className="text-xs font-600 text-emerald-700">Totale valore ordini chiusi</span>
+              <span className="text-lg font-800 text-emerald-700">€ {totale.toLocaleString('it-IT')}</span>
+            </div>
+          )}
+          <div className="space-y-2">
+            {storico.map(o => (
+              <div key={o.id} className="bg-white rounded-xl border border-warm-200 border-l-4 border-l-emerald-400 p-4 flex items-center gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-700 text-warm-900 truncate">
+                    {o.contact?.name || o.contact_name || '—'}
+                  </div>
+                  <div className="text-xs text-warm-500 mt-0.5 truncate">
+                    {o.project?.name || '—'}
+                    {o.project?.weight_format && ` — ${o.project.weight_format}`}
+                  </div>
+                  {o.notes && <div className="text-2xs text-warm-400 mt-1 line-clamp-1">{o.notes}</div>}
+                </div>
+                <div className="flex-shrink-0 text-right">
+                  {o.value_estimate && (
+                    <div className="text-sm font-800 text-emerald-700">€ {Number(o.value_estimate).toLocaleString('it-IT')}</div>
+                  )}
+                  <div className="text-2xs text-warm-400 mt-0.5">
+                    {o.closed_at
+                      ? new Date(o.closed_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })
+                      : new Date(o.updated_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })
+                    }
+                  </div>
+                  {o.assigned && <div className="text-2xs text-warm-400">{o.assigned.full_name}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -330,9 +553,10 @@ export default function ProductPipeline({ preProject, onModalClose }) {
   const [modal, setModal] = useState(null)
   const [filterProject, setFilterProject] = useState('')
   const [projects, setProjects] = useState([])
+  const [tab, setTab] = useState('kanban') // 'kanban' | 'storico' | 'stats'
 
   useEffect(() => {
-    if (preProject) setModal('new')
+    if (preProject) { setTab('kanban'); setModal('new') }
   }, [preProject])
 
   const load = () => api('/api/pipeline')
@@ -346,6 +570,14 @@ export default function ProductPipeline({ preProject, onModalClose }) {
       api('/api/projects').then(d => setProjects((d.projects || []).filter(p => p.stage === 'pronto')))
     }
   }, [])
+
+  async function handleClose(opp) {
+    if (!confirm(`Chiudere l'ordine per "${opp.contact?.name || opp.contact_name}"?\nVerranno create 3 task di follow-up.`)) return
+    try {
+      const d = await api(`/api/pipeline/${opp.id}/close`, { method: 'POST', body: {} })
+      setPipeline(prev => prev.filter(o => o.id !== opp.id))
+    } catch (err) { alert(err.message) }
+  }
 
   const filtered = pipeline.filter(o => !filterProject || o.project?.id === filterProject)
   const stageCounts = Object.fromEntries(STAGES.map(s => [s.key, filtered.filter(o => o.stage === s.key).length]))
@@ -381,22 +613,36 @@ export default function ProductPipeline({ preProject, onModalClose }) {
             {isAgent ? 'Le mie opportunità' : 'Pipeline Vendite'}
           </h1>
           <div className="flex items-center gap-3 mt-1 flex-wrap">
-            {STAGES.map(s => (
+            {tab === 'kanban' && STAGES.map(s => (
               <span key={s.key} className="flex items-center gap-1 text-xs">
                 <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`}/>
                 <span className={`font-600 ${s.headerText}`}>{s.label}</span>
                 <span className="text-warm-400">{stageCounts[s.key]}</span>
               </span>
             ))}
-            {totalValue > 0 && (
-              <span className="text-xs text-emerald-700 font-700 ml-2 bg-emerald-100 px-2 py-0.5 rounded-full">
-                € {totalValue.toLocaleString('it-IT')} ordinati
+            {tab === 'kanban' && totalValue > 0 && (
+              <span className="text-xs text-emerald-700 font-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                € {totalValue.toLocaleString('it-IT')} in ordine
               </span>
             )}
           </div>
         </div>
 
-        {!isAgent && projects.length > 0 && (
+        {/* Tab switcher */}
+        <div className="hidden md:flex items-center gap-1 bg-warm-100 rounded-lg p-1">
+          {[
+            { key: 'kanban', label: 'Pipeline' },
+            { key: 'storico', label: 'Storico' },
+            { key: 'stats', label: 'Statistiche' },
+          ].map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)}
+              className={`text-xs font-600 px-3 py-1.5 rounded-md transition-all ${tab === t.key ? 'bg-white text-warm-900 shadow-sm' : 'text-warm-500 hover:text-warm-700'}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {!isAgent && tab === 'kanban' && projects.length > 0 && (
           <select value={filterProject} onChange={e => setFilterProject(e.target.value)}
             className="text-xs border border-warm-200 rounded-lg px-2 py-1.5 bg-white text-warm-700 focus:outline-none focus:border-brand-400 hidden md:block">
             <option value="">Tutti i prodotti</option>
@@ -404,7 +650,7 @@ export default function ProductPipeline({ preProject, onModalClose }) {
           </select>
         )}
 
-        {canCreate && (
+        {canCreate && tab === 'kanban' && (
           <button onClick={() => setModal('new')}
             className="bg-brand-500 hover:bg-brand-600 text-white text-sm font-600 rounded-lg px-4 py-2 transition-colors flex items-center gap-1.5 flex-shrink-0">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5"><path d="M8 3v10M3 8h10"/></svg>
@@ -413,38 +659,48 @@ export default function ProductPipeline({ preProject, onModalClose }) {
         )}
       </div>
 
+      {/* Contenuto per tab */}
+      {tab === 'stats' && <StatsView />}
+      {tab === 'storico' && <StoricoView />}
+
       {/* Kanban */}
-      <div className="flex flex-1 overflow-x-auto scrollbar-none bg-warm-50">
-        {STAGES.map(stage => {
-          const cards = filtered.filter(o => o.stage === stage.key)
-          return (
-            <div key={stage.key} className={`flex-1 min-w-[220px] flex flex-col border-r border-warm-200 last:border-r-0 ${stage.colBg}`}>
-              <div className={`px-3 py-3 border-b ${stage.colBorder} flex items-center gap-2 flex-shrink-0`}>
-                <div className={`w-2 h-2 rounded-full ${stage.dot}`}/>
-                <span className={`text-xs font-700 uppercase tracking-widest ${stage.headerText}`}>{stage.label}</span>
-                <span className={`ml-auto text-xs font-700 ${stage.headerText} bg-white/80 px-2 py-0.5 rounded-full`}>{cards.length}</span>
+      {tab === 'kanban' && (
+        <div className="flex flex-1 overflow-x-auto scrollbar-none bg-warm-50">
+          {STAGES.map(stage => {
+            const cards = filtered.filter(o => o.stage === stage.key)
+            return (
+              <div key={stage.key} className={`flex-1 min-w-[220px] flex flex-col border-r border-warm-200 last:border-r-0 ${stage.colBg}`}>
+                <div className={`px-3 py-3 border-b ${stage.colBorder} flex items-center gap-2 flex-shrink-0`}>
+                  <div className={`w-2 h-2 rounded-full ${stage.dot}`}/>
+                  <span className={`text-xs font-700 uppercase tracking-widest ${stage.headerText}`}>{stage.label}</span>
+                  <span className={`ml-auto text-xs font-700 ${stage.headerText} bg-white/80 px-2 py-0.5 rounded-full`}>{cards.length}</span>
+                </div>
+                <div className="flex-1 overflow-y-auto p-2 scrollbar-none">
+                  {loading && [1,2].map(i => (
+                    <div key={i} className="bg-white rounded-xl border border-warm-200 p-3 mb-2 animate-pulse h-20"/>
+                  ))}
+                  {!loading && (
+                    <div className="space-y-2">
+                      {cards.map(o => (
+                        <OppCard key={o.id} opp={o} stage={stage}
+                          onClick={() => openCard(o)}
+                          onAdvanced={opp => setPipeline(prev => prev.map(p => p.id === opp.id ? opp : p))}
+                          onClose={stage.key === 'ordine' ? handleClose : null}
+                        />
+                      ))}
+                      {cards.length === 0 && (
+                        <div className={`text-xs ${stage.headerText} opacity-40 text-center py-10 border-2 border-dashed ${stage.colBorder} rounded-xl`}>
+                          Nessuna opportunità
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="flex-1 overflow-y-auto p-2 scrollbar-none">
-                {loading && [1,2].map(i => (
-                  <div key={i} className="bg-white rounded-xl border border-warm-200 p-3 mb-2 animate-pulse h-20"/>
-                ))}
-                {!loading && (
-                  <div className="space-y-2">
-                    {cards.map(o => (
-                      <OppCard key={o.id} opp={o} stage={stage} onClick={() => openCard(o)}/>
-                    ))}
-                    {cards.length === 0 && (
-                      <div className={`text-xs ${stage.headerText} opacity-40 text-center py-10 border-2 border-dashed ${stage.colBorder} rounded-xl`}>
-                        Nessuna opportunità
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* Modal admin/manager */}
       {modal && modal !== 'new' && !modal.type && canCreate && (

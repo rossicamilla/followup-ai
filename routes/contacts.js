@@ -30,7 +30,101 @@ router.get('/', requireAuth, async (req, res) => {
 
     const { data, error } = await query;
     if (error) throw error;
-    res.json({ contacts: data });
+
+    // Fetch open projects and pipeline per contact (matched by contact_name/client text field)
+    const [projectsRes, pipelineRes] = await Promise.all([
+      sb.from('projects')
+        .select('id, client, stage')
+        .in('stage', ['idea', 'sviluppo', 'pronto']),
+      sb.from('project_pipeline')
+        .select('id, contact_id, contact_name, stage')
+        .not('stage', 'eq', 'perso'),
+    ]);
+
+    const allProjects = projectsRes.data || [];
+    const allPipeline = pipelineRes.data || [];
+
+    // Match projects by client text (case-insensitive)
+    const projByName = {};
+    allProjects.forEach(p => {
+      if (p.client) {
+        const key = p.client.toLowerCase();
+        projByName[key] = (projByName[key] || 0) + 1;
+      }
+    });
+
+    // Match pipeline by contact_id (structured) or contact_name (text)
+    const pipeByContact = {};
+    const pipeByName = {};
+    allPipeline.forEach(p => {
+      if (p.contact_id) {
+        pipeByContact[p.contact_id] = (pipeByContact[p.contact_id] || 0) + 1;
+      } else if (p.contact_name) {
+        pipeByName[p.contact_name.toLowerCase()] = (pipeByName[p.contact_name.toLowerCase()] || 0) + 1;
+      }
+    });
+
+    const enriched = (data || []).map(c => ({
+      ...c,
+      open_projects: projByName[c.name?.toLowerCase()] || 0,
+      open_pipeline: (pipeByContact[c.id] || 0) + (pipeByName[c.name?.toLowerCase()] || 0),
+    }));
+
+    res.json({ contacts: enriched });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/contacts/import-from-projects — importa i client dai progetti come contatti
+router.post('/import-from-projects', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    // Prendi tutti i client unici dai progetti
+    const { data: projects, error: pe } = await sb
+      .from('projects')
+      .select('client, supplier')
+      .not('client', 'is', null);
+    if (pe) throw pe;
+
+    // Prendi tutti i contact_name dalla pipeline
+    const { data: pipeline } = await sb
+      .from('project_pipeline')
+      .select('contact_name')
+      .not('contact_name', 'is', null);
+
+    // Prendi contatti esistenti
+    const { data: existing } = await sb.from('contacts').select('name');
+    const existingNames = new Set((existing || []).map(c => c.name?.toLowerCase()));
+
+    const toImport = [];
+    const seen = new Set();
+
+    // Da progetti (campo client)
+    for (const p of projects || []) {
+      const name = p.client?.trim();
+      if (name && !existingNames.has(name.toLowerCase()) && !seen.has(name.toLowerCase())) {
+        seen.add(name.toLowerCase());
+        toImport.push({ name, stage: 'warm', created_by: req.profile.id, owner_id: req.profile.id });
+      }
+    }
+
+    // Da pipeline (contact_name)
+    for (const p of pipeline || []) {
+      const name = p.contact_name?.trim();
+      if (name && !existingNames.has(name.toLowerCase()) && !seen.has(name.toLowerCase())) {
+        seen.add(name.toLowerCase());
+        toImport.push({ name, stage: 'warm', created_by: req.profile.id, owner_id: req.profile.id });
+      }
+    }
+
+    if (!toImport.length) {
+      return res.json({ imported: 0, message: 'Nessun nuovo contatto da importare' });
+    }
+
+    const { data: inserted, error: ie } = await sb.from('contacts').insert(toImport).select();
+    if (ie) throw ie;
+
+    res.json({ imported: inserted.length, contacts: inserted });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
