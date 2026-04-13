@@ -171,16 +171,17 @@ export default function Tasks() {
   const { profile } = useApp()
   const isAdminOrManager = profile?.role === 'admin' || profile?.role === 'manager'
 
-  const [tasks, setTasks]               = useState([])
-  const [loading, setLoading]           = useState(true)
-  const [viewTab, setViewTab]           = useState('a-me')
-  const [filterStatus, setFilterStatus] = useState('false')
-  const [filterType, setFilterType]     = useState('')
-  const [draftTask, setDraftTask]       = useState(null)
-  const [editTask, setEditTask]         = useState(null)
-  const [showNew, setShowNew]           = useState(false)
+  const [tasks, setTasks]                   = useState([])
+  const [loading, setLoading]               = useState(true)
+  const [viewTab, setViewTab]               = useState('a-me')
+  const [filterPri, setFilterPri]           = useState('')
+  const [includeCompleted, setIncludeCompleted] = useState(false)
+  const [searchQuery, setSearchQuery]       = useState('')
+  const [draftTask, setDraftTask]           = useState(null)
+  const [editTask, setEditTask]             = useState(null)
+  const [showNew, setShowNew]               = useState(false)
   const [processingEmails, setProcessingEmails] = useState(false)
-  const [emailResult, setEmailResult]   = useState(null)
+  const [emailResult, setEmailResult]       = useState(null)
   const [outlookConnected, setOutlookConnected] = useState(false)
 
   const sensors = useSensors(
@@ -219,8 +220,9 @@ export default function Tasks() {
       : tasks.filter(t => t.created_by === profile?.id && t.assigned_to?.id !== profile?.id)
 
   const filtered = tabFiltered.filter(t => {
-    if (filterStatus && String(t.completed) !== filterStatus) return false
-    if (filterType && (t.task_type || t.type) !== filterType) return false
+    if (!includeCompleted && t.completed) return false
+    if (filterPri && t.priority !== filterPri) return false
+    if (searchQuery && !t.title.toLowerCase().includes(searchQuery.toLowerCase())) return false
     return true
   })
 
@@ -265,7 +267,9 @@ export default function Tasks() {
 
       {/* Header */}
       <div className="px-6 pt-5 pb-0 bg-white flex-shrink-0">
-        <div className="flex items-start justify-between mb-4">
+
+        {/* Riga titolo + contatore */}
+        <div className="flex items-center justify-between mb-3">
           <div>
             <h1 className="text-base font-bold tracking-tight text-warm-900">Task & Reminder</h1>
             <p className="text-xs text-warm-400 mt-0.5">
@@ -277,27 +281,16 @@ export default function Tasks() {
               )}
             </p>
           </div>
-
-          {/* Bottone Nuovo task */}
-          <div className="flex items-center gap-2">
-            {outlookConnected && isAdminOrManager && (
-              <button onClick={processEmails} disabled={processingEmails}
-                className="flex items-center gap-1.5 text-xs font-600 px-3 py-1.5 rounded-xl border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-40">
-                {processingEmails
-                  ? <span className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"/>
-                  : <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5"><rect x="1.5" y="3.5" width="13" height="10" rx="1.5"/><path d="M1.5 6.5h13M5.5 6.5v7"/></svg>
-                }
-                {processingEmails ? 'Analisi...' : 'Email'}
-              </button>
-            )}
-            <button onClick={() => setShowNew(true)}
-              className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 active:scale-95 text-white text-sm font-700 rounded-xl px-5 py-2.5 shadow-sm transition-all">
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4 flex-shrink-0">
-                <path d="M8 3v10M3 8h10"/>
-              </svg>
-              Nuovo task
+          {outlookConnected && isAdminOrManager && (
+            <button onClick={processEmails} disabled={processingEmails}
+              className="flex items-center gap-1.5 text-xs font-600 px-3 py-1.5 rounded-xl border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-40">
+              {processingEmails
+                ? <span className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"/>
+                : <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5"><rect x="1.5" y="3.5" width="13" height="10" rx="1.5"/><path d="M1.5 6.5h13M5.5 6.5v7"/></svg>
+              }
+              {processingEmails ? 'Analisi...' : 'Email'}
             </button>
-          </div>
+          )}
         </div>
 
         {emailResult && (
@@ -309,47 +302,77 @@ export default function Tasks() {
           </div>
         )}
 
-        {/* Tab */}
-        {isAdminOrManager ? (
-          <div className="flex items-center gap-0 border-b border-warm-100">
-            {[
-              { k: 'a-me',  label: 'Assegnate a me', count: countAMe  },
-              { k: 'da-me', label: 'Assegnate da me', count: countDaMe },
-            ].map(({ k, label, count }) => (
-              <button key={k} onClick={() => setViewTab(k)}
-                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-600 border-b-2 transition-all ${
-                  viewTab === k ? 'border-brand-500 text-warm-900' : 'border-transparent text-warm-400 hover:text-warm-600'
-                }`}>
-                {label}
-                {count > 0 && (
-                  <span className={`text-2xs font-700 px-1.5 py-0.5 rounded-full ${
-                    viewTab === k ? 'bg-brand-500 text-white' : 'bg-warm-100 text-warm-500'
-                  }`}>{count}</span>
-                )}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className="border-b border-warm-100"/>
-        )}
+        {/* Tab + Nuovo task sulla stessa riga */}
+        <div className="flex items-end justify-between border-b border-warm-100">
+          {isAdminOrManager ? (
+            <div className="flex items-center gap-0">
+              {[
+                { k: 'a-me',  label: 'Assegnate a me', count: countAMe  },
+                { k: 'da-me', label: 'Assegnate da me', count: countDaMe },
+              ].map(({ k, label, count }) => (
+                <button key={k} onClick={() => setViewTab(k)}
+                  className={`flex items-center gap-2 px-4 py-2.5 text-sm font-600 border-b-2 transition-all ${
+                    viewTab === k ? 'border-brand-500 text-warm-900' : 'border-transparent text-warm-400 hover:text-warm-600'
+                  }`}>
+                  {label}
+                  {count > 0 && (
+                    <span className={`text-2xs font-700 px-1.5 py-0.5 rounded-full ${
+                      viewTab === k ? 'bg-brand-500 text-white' : 'bg-warm-100 text-warm-500'
+                    }`}>{count}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div/>
+          )}
+          <button onClick={() => setShowNew(true)}
+            className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 active:scale-95 text-white text-sm font-700 rounded-xl px-4 py-2 mb-1.5 shadow-sm transition-all">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3.5 h-3.5 flex-shrink-0">
+              <path d="M8 3v10M3 8h10"/>
+            </svg>
+            Nuovo task
+          </button>
+        </div>
       </div>
 
       {/* Filtri */}
-      <div className="flex items-center gap-2 px-6 py-2.5 border-b border-warm-100 flex-shrink-0 bg-white">
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+      <div className="flex items-center gap-3 px-6 py-2.5 border-b border-warm-100 flex-shrink-0 bg-white">
+        {/* Priorità */}
+        <select value={filterPri} onChange={e => setFilterPri(e.target.value)}
           className="text-xs border border-warm-200 rounded-lg px-2.5 py-1.5 bg-white text-warm-600 font-500 focus:outline-none focus:border-brand-400">
-          <option value="">Tutti</option>
-          <option value="false">Aperti</option>
-          <option value="true">Completati</option>
+          <option value="">Tutte le priorità</option>
+          <option value="alta">Alta</option>
+          <option value="media">Media</option>
+          <option value="bassa">Bassa</option>
         </select>
-        <select value={filterType} onChange={e => setFilterType(e.target.value)}
-          className="text-xs border border-warm-200 rounded-lg px-2.5 py-1.5 bg-white text-warm-600 font-500 focus:outline-none focus:border-brand-400">
-          <option value="">Tutti i tipi</option>
-          <option value="task">Task</option>
-          <option value="chiamata">Chiamata</option>
-          <option value="email">Email</option>
-          <option value="meeting">Meeting</option>
-        </select>
+
+        {/* Spacer */}
+        <div className="flex-1"/>
+
+        {/* Includi completate */}
+        <label className="flex items-center gap-1.5 cursor-pointer select-none">
+          <div onClick={() => setIncludeCompleted(v => !v)}
+            className={`w-8 rounded-full relative transition-colors flex-shrink-0 ${includeCompleted ? 'bg-brand-500' : 'bg-warm-200'}`}
+            style={{height:'18px'}}>
+            <div className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-all ${includeCompleted ? 'left-[17px]' : 'left-0.5'}`}/>
+          </div>
+          <span className="text-xs text-warm-500 font-500 whitespace-nowrap">Includi completate</span>
+        </label>
+
+        {/* Cerca */}
+        <div className="relative">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 text-warm-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+            <circle cx="6.5" cy="6.5" r="4"/><path d="M11 11l2.5 2.5"/>
+          </svg>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Cerca task..."
+            className="text-xs border border-warm-200 rounded-lg pl-8 pr-3 py-1.5 bg-white text-warm-700 font-500 focus:outline-none focus:border-brand-400 w-44"
+          />
+        </div>
       </div>
 
       {/* Intestazioni colonne */}
