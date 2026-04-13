@@ -239,6 +239,13 @@ export default function Tasks() {
     await api(`/api/tasks/${id}`, { method: 'DELETE' })
     load()
   }
+  async function deleteCompleted() {
+    const completedIds = tabFiltered.filter(t => t.completed).map(t => t.id)
+    if (!completedIds.length) return
+    if (!confirm(`Eliminare ${completedIds.length} task completate?`)) return
+    await Promise.all(completedIds.map(id => api(`/api/tasks/${id}`, { method: 'DELETE' })))
+    load()
+  }
   async function syncToOutlook(task) {
     try {
       await api('/api/outlook/sync-task', { method: 'POST', body: { task_id: task.id } })
@@ -349,6 +356,14 @@ export default function Tasks() {
 
         {/* Spacer */}
         <div className="flex-1"/>
+
+        {/* Elimina completate — visibile solo quando il toggle è attivo */}
+        {includeCompleted && tabFiltered.some(t => t.completed) && (
+          <button onClick={deleteCompleted}
+            className="text-xs font-600 text-red-500 hover:text-red-600 border border-red-200 hover:bg-red-50 px-2.5 py-1.5 rounded-lg transition-colors whitespace-nowrap">
+            Elimina completate
+          </button>
+        )}
 
         {/* Includi completate */}
         <label className="flex items-center gap-1.5 cursor-pointer select-none">
