@@ -116,34 +116,37 @@ function SortableTask({ task, today, onToggle, onDelete, onDraft, onSync, onEdit
         </div>
       </div>
 
-      {/* Collegato a — w-44, nascosto su mobile */}
-      <div className="hidden md:block w-44 flex-shrink-0 min-w-0">
+      {/* Obiettivo collegato — w-48, nascosto su mobile */}
+      <div className="hidden md:block w-48 flex-shrink-0 min-w-0">
         <LinkedBadge project={task.project} opportunity={task.opportunity} />
       </div>
 
-      {/* Assegnatario — w-8 */}
-      <div className="w-8 flex-shrink-0 flex justify-center">
+      {/* Assegnato a — w-36, avatar + nome, nascosto su mobile */}
+      <div className="hidden md:flex w-36 flex-shrink-0 items-center gap-2 min-w-0">
         {task.assigned_to ? (
-          <div
-            className={`w-7 h-7 rounded-full flex items-center justify-center text-2xs font-700 ${avatarColor(task.assigned_to.full_name)}`}
-            title={task.assigned_to.full_name}>
-            {initials(task.assigned_to.full_name)}
-          </div>
+          <>
+            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-2xs font-700 flex-shrink-0 ${avatarColor(task.assigned_to.full_name)}`}>
+              {initials(task.assigned_to.full_name)}
+            </div>
+            <span className="text-xs font-500 text-warm-700 truncate">{task.assigned_to.full_name}</span>
+          </>
         ) : (
-          <div className="w-7 h-7 rounded-full border-2 border-dashed border-warm-200"/>
+          <div className="w-6 h-6 rounded-full border-2 border-dashed border-warm-200"/>
         )}
       </div>
 
-      {/* Scadenza — w-20, nascosto su mobile */}
-      <div className="hidden md:flex w-20 flex-shrink-0 justify-end">
+      {/* Scadenza — w-24, nascosto su mobile */}
+      <div className="hidden md:flex w-24 flex-shrink-0 justify-end">
         {task.due_date ? (
-          <span className={`text-xs font-500 px-2 py-1 rounded-lg ${
-            overdue ? 'bg-red-50 text-red-600' : 'text-warm-400'
+          <span className={`text-xs font-500 px-2.5 py-1 rounded-full border ${
+            overdue
+              ? 'bg-red-50 text-red-600 border-red-200'
+              : 'text-warm-500 border-warm-200'
           }`}>
             {overdue ? '⚠ ' : ''}{new Date(task.due_date + 'T12:00:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}
           </span>
         ) : (
-          <span className="text-xs text-warm-300 pr-2">—</span>
+          <span className="text-xs text-warm-300 border border-warm-200 rounded-full px-2.5 py-1">Nessuna</span>
         )}
       </div>
 
@@ -492,10 +495,10 @@ export default function Tasks() {
 
         {/* Intestazioni colonne tabella */}
         <div className="flex items-center gap-3 pl-9 pr-4 py-2 bg-warm-50 border-b border-warm-100">
-          <div className="flex-1 text-2xs font-700 text-warm-400 uppercase tracking-wider">Task</div>
-          <div className="hidden md:block w-44 flex-shrink-0 text-2xs font-700 text-warm-400 uppercase tracking-wider">Collegato a</div>
-          <div className="w-8 flex-shrink-0"/>
-          <div className="hidden md:block w-20 flex-shrink-0 text-right text-2xs font-700 text-warm-400 uppercase tracking-wider">Scadenza</div>
+          <div className="flex-1 text-2xs font-700 text-warm-400 uppercase tracking-wider">Titolo task</div>
+          <div className="hidden md:block w-48 flex-shrink-0 text-2xs font-700 text-warm-400 uppercase tracking-wider">Obiettivo collegato</div>
+          <div className="hidden md:block w-36 flex-shrink-0 text-2xs font-700 text-warm-400 uppercase tracking-wider">Assegnato a</div>
+          <div className="hidden md:block w-24 flex-shrink-0 text-2xs font-700 text-warm-400 uppercase tracking-wider text-right">Scadenza</div>
           <div className="w-16 flex-shrink-0"/>
         </div>
       </div>
