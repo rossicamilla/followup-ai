@@ -3,8 +3,12 @@ import { api } from '../../lib/api'
 import { useApp } from '../../App'
 import {
   DndContext, PointerSensor, TouchSensor, useSensor, useSensors,
-  useDroppable, useDraggable,
+  closestCenter, useDroppable,
 } from '@dnd-kit/core'
+import {
+  arrayMove, SortableContext, useSortable, verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 // ── Costanti ──────────────────────────────────────────────────────────────────
 
@@ -664,28 +668,29 @@ const IDEA_PRI_CARD = {
   bassa: { bg: 'bg-yellow-50', border: 'border-yellow-200', borderL: 'border-l-yellow-400', divider: 'border-yellow-100',text: 'text-yellow-900',sub: 'text-yellow-500',btn: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' },
 }
 
-// ── Droppable column area ─────────────────────────────────────────────────────
-function DroppableColumn({ id, children }) {
-  const { setNodeRef, isOver } = useDroppable({ id })
+// ── Droppable + sortable column area ─────────────────────────────────────────
+function DroppableColumn({ id, items, children }) {
+  const { setNodeRef } = useDroppable({ id })
   return (
-    <div ref={setNodeRef}
-      className={`flex-1 overflow-y-auto p-2 scrollbar-none transition-colors rounded-b-lg ${isOver ? 'bg-brand-50/50 ring-2 ring-inset ring-brand-200' : ''}`}>
-      {children}
+    <div ref={setNodeRef} className="flex-1 overflow-y-auto p-2 scrollbar-none">
+      <SortableContext items={items} strategy={verticalListSortingStrategy}>
+        {children}
+      </SortableContext>
     </div>
   )
 }
 
 // ── Card Kanban ───────────────────────────────────────────────────────────────
-function ProjectCard({ project, col, onClick, onAdvance, onProponi }) {
+function ProjectCard({ project, col, onClick, onAdvance, onProponi, compact }) {
   const [advancing, setAdvancing] = useState(false)
 
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: project.id,
-    data: { stage: project.stage },
-  })
-  const dragStyle = transform
-    ? { transform: `translate3d(${transform.x}px,${transform.y}px,0)`, zIndex: 50 }
-    : undefined
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: project.id })
+  const dragStyle = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.45 : 1,
+    zIndex: isDragging ? 50 : 'auto',
+  }
 
   async function handleAdvance(e) {
     e.stopPropagation()
@@ -701,11 +706,36 @@ function ProjectCard({ project, col, onClick, onAdvance, onProponi }) {
   const steps = project.dev_steps || []
   const pri = col.key === 'idea' ? (IDEA_PRI_CARD[project.priority] || null) : null
 
+  const dragHandle = (
+    <div {...listeners} onClick={e => e.stopPropagation()}
+      className="cursor-grab active:cursor-grabbing p-1 rounded-lg hover:bg-black/5 touch-none flex-shrink-0 -mr-1 -mt-0.5">
+      <svg viewBox="0 0 8 14" fill="currentColor" className="w-2.5 h-3.5 text-warm-300 hover:text-warm-500 transition-colors">
+        <circle cx="2" cy="2" r="1.1"/><circle cx="6" cy="2" r="1.1"/>
+        <circle cx="2" cy="7" r="1.1"/><circle cx="6" cy="7" r="1.1"/>
+        <circle cx="2" cy="12" r="1.1"/><circle cx="6" cy="12" r="1.1"/>
+      </svg>
+    </div>
+  )
+
+  // Compact card
+  if (compact) return (
+    <div ref={setNodeRef} style={dragStyle} {...attributes}
+      onClick={onClick}
+      className={`rounded-lg border border-l-4 px-2.5 py-2 cursor-pointer hover:shadow-sm transition-all flex items-center gap-2
+        ${pri ? `${pri.bg} ${pri.border} ${pri.borderL}` : `bg-white border-warm-200 ${col.cardBorder}`}`}>
+      {dragHandle}
+      <div className="flex-1 min-w-0">
+        <div className={`text-xs font-600 truncate ${pri ? pri.text : 'text-warm-900'}`}>{project.name}</div>
+      </div>
+      {project.market && <MarketBadge market={project.market}/>}
+    </div>
+  )
+
   return (
-    <div ref={setNodeRef} style={{ ...dragStyle, opacity: isDragging ? 0.45 : 1 }}
+    <div ref={setNodeRef} style={dragStyle}
       {...attributes}
       onClick={onClick}
-      className={`group/card rounded-xl border border-l-4 p-3 cursor-pointer hover:shadow-md transition-all
+      className={`rounded-xl border border-l-4 p-3 cursor-pointer hover:shadow-md transition-all
         ${pri
           ? `${pri.bg} ${pri.border} ${pri.borderL}`
           : `bg-white border-warm-200 ${col.cardBorder}`
@@ -715,16 +745,7 @@ function ProjectCard({ project, col, onClick, onAdvance, onProponi }) {
         <div className={`font-600 text-sm leading-snug flex-1 min-w-0 ${pri ? pri.text : 'text-warm-900'}`}>
           {project.name}
         </div>
-        {/* Drag handle */}
-        <div {...listeners}
-          onClick={e => e.stopPropagation()}
-          className="cursor-grab active:cursor-grabbing p-1 rounded-lg hover:bg-black/5 touch-none flex-shrink-0 -mr-1 -mt-0.5">
-          <svg viewBox="0 0 8 14" fill="currentColor" className="w-2.5 h-3.5 text-warm-400">
-            <circle cx="2" cy="2" r="1.1"/><circle cx="6" cy="2" r="1.1"/>
-            <circle cx="2" cy="7" r="1.1"/><circle cx="6" cy="7" r="1.1"/>
-            <circle cx="2" cy="12" r="1.1"/><circle cx="6" cy="12" r="1.1"/>
-          </svg>
-        </div>
+        {dragHandle}
       </div>
 
       <div className="flex flex-wrap gap-1 mb-2">
@@ -756,8 +777,9 @@ export default function Projects({ onProponiPipeline }) {
   const [projects, setProjects]       = useState([])
   const [loading, setLoading]         = useState(true)
   const [modal, setModal]             = useState(null)
-  const [sviluppoView, setSviluppoView] = useState(null) // progetto aperto in vista dettaglio
+  const [sviluppoView, setSviluppoView] = useState(null)
   const [filterMarket, setFilterMarket] = useState('')
+  const [compact, setCompact]         = useState(false)
   const [syncing, setSyncing]         = useState(false)
   const [deduping, setDeduping]       = useState(false)
   const [syncResult, setSyncResult]   = useState(null)
@@ -790,16 +812,32 @@ export default function Projects({ onProponiPipeline }) {
   }
 
   async function handleDragEnd({ active, over }) {
-    if (!over) return
-    const newStage = over.id
-    const project = projects.find(p => p.id === active.id)
-    if (!project || project.stage === newStage) return
-    const prevStage = project.stage
-    setProjects(prev => prev.map(p => p.id === active.id ? { ...p, stage: newStage } : p))
-    try {
-      await api(`/api/projects/${active.id}`, { method: 'PATCH', body: { stage: newStage } })
-    } catch (e) {
-      setProjects(prev => prev.map(p => p.id === active.id ? { ...p, stage: prevStage } : p))
+    if (!over || active.id === over.id) return
+    const activeId = active.id
+    const overId = over.id
+    const activeItem = projects.find(p => p.id === activeId)
+    if (!activeItem) return
+    const overIsColumn = COLUMNS.some(c => c.key === overId)
+    const overStage = overIsColumn ? overId : projects.find(p => p.id === overId)?.stage
+    if (!overStage) return
+
+    if (activeItem.stage !== overStage) {
+      const prevStage = activeItem.stage
+      setProjects(prev => prev.map(p => p.id === activeId ? { ...p, stage: overStage } : p))
+      try {
+        await api(`/api/projects/${activeId}`, { method: 'PATCH', body: { stage: overStage } })
+      } catch {
+        setProjects(prev => prev.map(p => p.id === activeId ? { ...p, stage: prevStage } : p))
+      }
+    } else if (!overIsColumn) {
+      setProjects(prev => {
+        const colItems = prev.filter(p => p.stage === overStage)
+        const others = prev.filter(p => p.stage !== overStage)
+        const oldIdx = colItems.findIndex(p => p.id === activeId)
+        const newIdx = colItems.findIndex(p => p.id === overId)
+        if (oldIdx < 0 || newIdx < 0) return prev
+        return [...others, ...arrayMove(colItems, oldIdx, newIdx)]
+      })
     }
   }
 
@@ -880,6 +918,14 @@ export default function Projects({ onProponiPipeline }) {
           </>
         )}
 
+        <button onClick={() => setCompact(v => !v)} title={compact ? 'Vista espansa' : 'Vista compatta'}
+          className="p-2 rounded-lg border border-warm-200 hover:border-warm-300 text-warm-400 hover:text-warm-700 transition-colors flex-shrink-0">
+          {compact
+            ? <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4"><rect x="1.5" y="2" width="13" height="4" rx="1"/><rect x="1.5" y="8" width="13" height="4" rx="1"/></svg>
+            : <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4"><rect x="1.5" y="1.5" width="13" height="6" rx="1"/><rect x="1.5" y="9" width="13" height="2.5" rx="1"/><rect x="1.5" y="13" width="13" height="1.5" rx="0.5"/></svg>
+          }
+        </button>
+
         {['admin', 'manager'].includes(profile?.role) && (
           <button onClick={() => setModal({ type: 'idea', project: null })}
             className="bg-brand-500 hover:bg-brand-600 text-white text-sm font-600 rounded-lg px-4 py-2 transition-colors flex items-center gap-1.5 flex-shrink-0">
@@ -903,7 +949,7 @@ export default function Projects({ onProponiPipeline }) {
       )}
 
       {/* Kanban */}
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <div className="flex flex-1 overflow-x-auto scrollbar-none bg-warm-50">
           {COLUMNS.map(col => {
             let cards = filtered.filter(p =>
@@ -927,18 +973,14 @@ export default function Projects({ onProponiPipeline }) {
                   </div>
                 )}
                 {!loading && (
-                  <DroppableColumn id={col.key}>
-                    <div className="space-y-2">
+                  <DroppableColumn id={col.key} items={cards.map(p => p.id)}>
+                    <div className="space-y-1.5">
                       {cards.map(p => (
-                        <ProjectCard key={p.id} project={p} col={col}
+                        <ProjectCard key={p.id} project={p} col={col} compact={compact}
                           onClick={() => {
-                            if (col.key === 'sviluppo') {
-                              setSviluppoView(p)
-                            } else if (col.key === 'idea') {
-                              setModal({ type: 'idea', project: p })
-                            } else {
-                              setModal({ type: 'pronto', project: p })
-                            }
+                            if (col.key === 'sviluppo') setSviluppoView(p)
+                            else if (col.key === 'idea') setModal({ type: 'idea', project: p })
+                            else setModal({ type: 'pronto', project: p })
                           }}
                           onAdvance={handleAdvanced}
                           onProponi={p => { onProponiPipeline?.(p) }}
