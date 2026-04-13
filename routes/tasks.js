@@ -11,7 +11,7 @@ router.get('/', requireAuth, async (req, res) => {
       .from('tasks')
       .select(`
         id, title, task_type, due_date, urgent, completed,
-        priority, contact_id, project_id, opportunity_id, ai_generated, created_by,
+        priority, contact_id, project_id, opportunity_id, ai_generated, created_by, created_at,
         contact:contacts(name, company),
         project:projects(id, name),
         opportunity:project_pipeline(id, contact_name, contact:contacts(name), project:projects(name)),
