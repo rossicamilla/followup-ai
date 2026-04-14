@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { api } from '../../lib/api'
-import { useApp } from '../../App'
+import { useApp, useConfirm } from '../../App'
 import TaskEditModal from './TaskEditModal'
 import NewTaskModal from './NewTaskModal'
 import {
@@ -164,6 +164,7 @@ function SortableTask({ task, today, onToggle, onDelete, onEdit }) {
 // ── Vista principale ──────────────────────────────────────────────────────────
 export default function Tasks() {
   const { profile } = useApp()
+  const confirm = useConfirm()
   const isAdminOrManager = profile?.role === 'admin' || profile?.role === 'manager'
 
   const [tasks, setTasks]                   = useState([])
@@ -242,14 +243,14 @@ export default function Tasks() {
     load()
   }
   async function deleteTask(id) {
-    if (!confirm('Eliminare questo task?')) return
+    if (!await confirm('Eliminare questo task?', { danger: true, confirmLabel: 'Elimina' })) return
     await api(`/api/tasks/${id}`, { method: 'DELETE' })
     load()
   }
   async function deleteCompleted() {
     const completedIds = tabFiltered.filter(t => t.completed).map(t => t.id)
     if (!completedIds.length) return
-    if (!confirm(`Eliminare ${completedIds.length} task completate?`)) return
+    if (!await confirm(`Eliminare ${completedIds.length} task completate?`, { danger: true, confirmLabel: 'Elimina' })) return
     await Promise.all(completedIds.map(id => api(`/api/tasks/${id}`, { method: 'DELETE' })))
     load()
   }

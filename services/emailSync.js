@@ -8,6 +8,17 @@ const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const STAGE_ORDER = { proposto: 0, campione: 1, offerta: 2, ordine: 3 };
 
+async function logAction(userId, action, entityType, entityId, entityName, details = {}) {
+  try {
+    await supabase.from('ai_sync_log').insert({
+      user_id: userId, action, entity_type: entityType,
+      entity_id: entityId || null, entity_name: entityName, details, reviewed: false,
+    });
+  } catch (e) {
+    console.error('[email-sync] Errore log:', e.message);
+  }
+}
+
 const DEV_STEPS_KEYWORDS = {
   'Ricerca fornitore':     ['fornitore', 'supplier', 'trovato fornitore', 'ricerca fornitore'],
   'Campione ricevuto':     ['campione', 'sample', 'ricevuto campione', 'campione ricevuto', 'assaggiato'],
@@ -177,6 +188,10 @@ Includi solo elementi con dati reali e rilevanti. Se non c'è nulla di significa
 
     if (Object.keys(upd).length) {
       await supabase.from('projects').update(upd).eq('id', project.id);
+      await logAction(userId, 'project_updated', 'project', project.id, project.name, {
+        steps_completed: pu.completed_steps || [],
+        notes_added: pu.notes_to_add || null,
+      });
       updated++;
     }
 
@@ -196,15 +211,16 @@ Includi solo elementi con dati reali e rilevanti. Se non c'è nulla di significa
         .maybeSingle();
 
       if (existing) {
-        // Avanza stage solo se più avanti, mai indietro
         if ((STAGE_ORDER[pl.stage] ?? -1) > (STAGE_ORDER[existing.stage] ?? -1)) {
           await supabase.from('project_pipeline')
             .update({ stage: pl.stage, ...(pl.notes ? { notes: pl.notes } : {}) })
             .eq('id', existing.id);
+          await logAction(userId, 'pipeline_updated', 'pipeline', existing.id,
+            `${project.name} — ${pl.contact_name}`, { stage: pl.stage, notes: pl.notes });
           updated++;
         }
       } else {
-        await supabase.from('project_pipeline').insert({
+        const { data: newPl } = await supabase.from('project_pipeline').insert({
           project_id: project.id,
           contact_id: contact?.id || null,
           contact_name: pl.contact_name,
@@ -212,7 +228,9 @@ Includi solo elementi con dati reali e rilevanti. Se non c'è nulla di significa
           notes: pl.notes || null,
           owner_id: userId,
           created_by: userId,
-        });
+        }).select('id').single();
+        await logAction(userId, 'pipeline_created', 'pipeline', newPl?.id,
+          `${project.name} — ${pl.contact_name}`, { stage: pl.stage, notes: pl.notes });
         updated++;
       }
     }
@@ -228,7 +246,7 @@ Includi solo elementi con dati reali e rilevanti. Se non c'è nulla di significa
       .maybeSingle();
 
     if (!existing) {
-      await supabase.from('projects').insert({
+      const { data: newProj } = await supabase.from('projects').insert({
         name: idea.name.trim(),
         stage: 'idea',
         priority: 'media',
@@ -236,9 +254,13 @@ Includi solo elementi con dati reali e rilevanti. Se non c'è nulla di significa
         notes: idea.notes || null,
         owner_id: userId,
         created_by: userId,
+      }).select('id').single();
+      await logAction(userId, 'idea_created', 'project', newProj?.id, idea.name.trim(), {
+        notes_added: idea.notes || null,
+        market: idea.market || 'Retail',
+        contact_email: idea.contact_email,
       });
       updated++;
-      console.log(`[email-sync] Nuova idea creata: "${idea.name}"`);
     }
   }
 
@@ -263,6 +285,10 @@ Includi solo elementi con dati reali e rilevanti. Se non c'è nulla di significa
 
     if (Object.keys(upd).length) {
       await supabase.from('contacts').update(upd).eq('id', contact.id);
+      await logAction(userId, 'contact_updated', 'contact', contact.id, contact.name, {
+        notes_added: cu.notes_addition || null,
+        stage: cu.stage_hint || null,
+      });
       updated++;
     }
   }

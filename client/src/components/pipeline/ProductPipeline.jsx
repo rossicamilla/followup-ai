@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { api } from '../../lib/api'
-import { useApp } from '../../App'
+import { useApp, useConfirm } from '../../App'
 import {
   DndContext, PointerSensor, TouchSensor, useSensor, useSensors,
   useDroppable, useDraggable,
@@ -57,6 +57,7 @@ const stageMap = Object.fromEntries(STAGES.map(s => [s.key, s]))
 // ── Modal crea/modifica opportunità (admin e manager) ─────────────────────────
 function OpportunityModal({ opp, preProject, onClose, onSaved, onDeleted }) {
   const { profile } = useApp()
+  const confirm = useConfirm()
   const isNew = !opp
   const [projects, setProjects] = useState([])
   const [contacts, setContacts] = useState([])
@@ -104,7 +105,7 @@ function OpportunityModal({ opp, preProject, onClose, onSaved, onDeleted }) {
   }
 
   async function del() {
-    if (!confirm('Eliminare questa opportunità?')) return
+    if (!await confirm('Eliminare questa opportunità?', { danger: true, confirmLabel: 'Elimina' })) return
     setDeleting(true)
     try {
       await api(`/api/pipeline/${opp.id}`, { method: 'DELETE' })
@@ -591,6 +592,7 @@ function StoricoView() {
 // ── Vista principale ──────────────────────────────────────────────────────────
 export default function ProductPipeline({ preProject, onModalClose }) {
   const { profile } = useApp()
+  const confirm = useConfirm()
   const isAgent = profile?.role === 'agent'
   const canCreate = ['admin', 'manager'].includes(profile?.role)
 
@@ -626,7 +628,7 @@ export default function ProductPipeline({ preProject, onModalClose }) {
   }, [])
 
   async function handleClose(opp) {
-    if (!confirm(`Chiudere l'ordine per "${opp.contact?.name || opp.contact_name}"?\nVerranno create 3 task di follow-up.`)) return
+    if (!await confirm(`Chiudere l'ordine per "${opp.contact?.name || opp.contact_name}"?`, { title: 'Verranno create 3 task di follow-up.', confirmLabel: 'Chiudi ordine' })) return
     try {
       const d = await api(`/api/pipeline/${opp.id}/close`, { method: 'POST', body: {} })
       setPipeline(prev => prev.filter(o => o.id !== opp.id))

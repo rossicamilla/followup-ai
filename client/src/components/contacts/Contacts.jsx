@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { api } from '../../lib/api'
-import { useApp } from '../../App'
+import { useApp, useConfirm } from '../../App'
 import ContactTimeline from './ContactTimeline'
 
 const STAGES = [
@@ -217,6 +217,7 @@ function ListView({ contacts, loading, onSelect, onNew, onImport, importing, imp
 // ── Vista: Scheda anagrafica ──────────────────────────────────────────
 function ProfileView({ contact, onBack, onEdit, onDeleted }) {
   const { profile } = useApp()
+  const confirm = useConfirm()
   const [activeTab, setActiveTab] = useState('riepilogo')
   const stage = stageMap[contact.stage] || stageMap.new
   const initials = contact.name?.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase()
@@ -225,7 +226,7 @@ function ProfileView({ contact, onBack, onEdit, onDeleted }) {
   const doneTasks  = (contact.tasks || []).filter(t =>  t.completed)
 
   async function del() {
-    if (!confirm(`Eliminare "${contact.name}"?`)) return
+    if (!await confirm(`Eliminare "${contact.name}"?`, { danger: true, confirmLabel: 'Elimina' })) return
     try {
       await api(`/api/contacts/${contact.id}`, { method: 'DELETE' })
       onDeleted(contact.id)
@@ -450,6 +451,7 @@ function ProfileView({ contact, onBack, onEdit, onDeleted }) {
 // ── Vista: Modifica contatto ──────────────────────────────────────────
 function EditView({ contact, onBack, onSaved, onDeleted }) {
   const { profile, team } = useApp()
+  const confirm = useConfirm()
   const isNew = !contact
   const [form, setForm] = useState({
     name:     contact?.name     || '',
@@ -483,7 +485,7 @@ function EditView({ contact, onBack, onSaved, onDeleted }) {
   }
 
   async function del() {
-    if (!confirm(`Eliminare "${contact.name}"?`)) return
+    if (!await confirm(`Eliminare "${contact.name}"?`, { danger: true, confirmLabel: 'Elimina' })) return
     setDeleting(true)
     try {
       await api(`/api/contacts/${contact.id}`, { method: 'DELETE' })
@@ -636,7 +638,7 @@ export default function Contacts() {
   }
 
   async function handleDeleteOutlookContacts() {
-    if (!window.confirm('Eliminare tutti i tuoi contatti importati da Outlook?')) return
+    if (!await confirm('Eliminare tutti i tuoi contatti importati da Outlook?', { danger: true, confirmLabel: 'Elimina' })) return
     setDeletingOutlook(true)
     try {
       const d = await api('/api/contacts/mine?source=outlook', { method: 'DELETE', body: {} })

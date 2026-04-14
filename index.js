@@ -37,6 +37,7 @@ app.use('/api/outlook', require('./routes/outlook'));
 app.use('/api/team', require('./routes/team'));
 app.use('/api/sync', require('./routes/sync'));
 app.use('/api/pipeline', require('./routes/pipeline'));
+app.use('/api/ai-log', require('./routes/aiLog'));
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react' // useRef usato per fileInputRef
 import { api } from '../../lib/api'
-import { useApp } from '../../App'
+import { useApp, useConfirm } from '../../App'
 import {
   DndContext, PointerSensor, TouchSensor, useSensor, useSensors,
   useDroppable, useDraggable, DragOverlay,
@@ -123,6 +123,7 @@ function StepProgress({ steps }) {
 // ── Modal Idea ────────────────────────────────────────────────────────────────
 function IdeaModal({ project, onClose, onSaved, onDeleted }) {
   const { profile } = useApp()
+  const confirm = useConfirm()
   const isNew = !project
   const [form, setForm] = useState({
     name:         project?.name || '',
@@ -153,7 +154,7 @@ function IdeaModal({ project, onClose, onSaved, onDeleted }) {
   }
 
   async function del() {
-    if (!confirm(`Eliminare "${project.name}"?`)) return
+    if (!await confirm(`Eliminare "${project.name}"?`, { danger: true, confirmLabel: 'Elimina' })) return
     setDeleting(true)
     try {
       await api(`/api/projects/${project.id}`, { method: 'DELETE' })
@@ -285,7 +286,7 @@ function ProntoModal({ project, onClose, onSaved, onDeleted, onProponi }) {
   }
 
   async function del() {
-    if (!confirm(`Eliminare "${project.name}"?`)) return
+    if (!await confirm(`Eliminare "${project.name}"?`, { danger: true, confirmLabel: 'Elimina' })) return
     setDeleting(true)
     try {
       await api(`/api/projects/${project.id}`, { method: 'DELETE' })
@@ -478,7 +479,7 @@ function SviluppoView({ project: initialProject, onBack, onSaved, onDeleted, onA
   }
 
   async function del() {
-    if (!confirm(`Eliminare "${project.name}"?`)) return
+    if (!await confirm(`Eliminare "${project.name}"?`, { danger: true, confirmLabel: 'Elimina' })) return
     await api(`/api/projects/${project.id}`, { method: 'DELETE' })
     onDeleted(project.id)
     onBack()

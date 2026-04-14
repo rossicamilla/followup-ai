@@ -149,7 +149,7 @@ function OutlookSection() {
 }
 
 export default function Sidebar() {
-  const { profile, view, setView } = useApp()
+  const { profile, view, setView, aiNotifCount, openAIPanel } = useApp()
   const [navItems, setNavItems] = useState(() => loadOrder(profile?.role || 'employee'))
 
   const sensors = useSensors(
@@ -223,6 +223,20 @@ export default function Sidebar() {
           </>
         )}
       </nav>
+
+      {/* Notifiche AI */}
+      {aiNotifCount > 0 && (
+        <div className="px-3 py-2 border-t border-warm-200 flex-shrink-0">
+          <button onClick={openAIPanel}
+            className="w-full flex items-center gap-2 px-2 py-2 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 transition-colors text-left">
+            <div className="w-5 h-5 rounded-full bg-amber-400 flex items-center justify-center flex-shrink-0">
+              <span className="text-white text-2xs font-700">{aiNotifCount > 9 ? '9+' : aiNotifCount}</span>
+            </div>
+            <span className="text-xs font-600 text-amber-700 flex-1">Modifiche AI da rivedere</span>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3 text-amber-500"><path d="M6 4l4 4-4 4"/></svg>
+          </button>
+        </div>
+      )}
 
       {/* Outlook */}
       <OutlookSection />
