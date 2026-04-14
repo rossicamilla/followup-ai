@@ -172,7 +172,7 @@ export default function ContactTimeline({ contactId, contactName, contactEmail }
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4 text-brand-500">
             <circle cx="8" cy="8" r="6.5"/><path d="M8 5v3.5l2 2"/>
           </svg>
-          <span className="text-xs font-700 text-brand-700 uppercase tracking-wider">Riepilogo AI</span>
+          <span className="text-xs font-700 text-brand-700 uppercase tracking-wider">Riepilogo</span>
         </div>
         {loadingSummary ? (
           <div className="space-y-1.5">
