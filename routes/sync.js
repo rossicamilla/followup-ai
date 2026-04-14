@@ -33,6 +33,7 @@ function requireSyncAuth(req, res, next) {
 function mapStage(s) {
   if (!s) return 'idea';
   const v = String(s).toLowerCase().trim();
+  if (v.includes('standby') || v.includes('stand by') || v.includes('pausa') || v.includes('sospeso')) return 'standby';
   if (v.includes('pronto') || v.includes('ready')) return 'pronto';
   if (v.includes('sviluppo') || v.includes('development')) return 'sviluppo';
   if (v.includes('test')) return 'test';
