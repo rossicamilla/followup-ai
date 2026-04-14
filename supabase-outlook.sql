@@ -41,6 +41,10 @@ create policy "outlook_tokens_update" on public.outlook_tokens for update using 
   user_id = auth.uid()
 );
 
+create policy "outlook_tokens_delete" on public.outlook_tokens for delete using (
+  user_id = auth.uid()
+);
+
 -- Policies per task_outlook_sync
 create policy "task_outlook_sync_select" on public.task_outlook_sync for select using (
   user_id = auth.uid() or user_id in (select get_my_agents())

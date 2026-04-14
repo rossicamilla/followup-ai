@@ -29,9 +29,10 @@ function consumeOAuthState(nonce) {
 
 const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// Service key: necessario lato server per scrivere outlook_tokens bypassando RLS
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
+  process.env.SUPABASE_SERVICE_KEY
 );
 
 const MICROSOFT_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID;
@@ -78,7 +79,7 @@ router.get('/callback', async (req, res) => {
         code,
         redirect_uri: MICROSOFT_REDIRECT_URI,
         grant_type: 'authorization_code',
-        scope: 'https://graph.microsoft.com/Calendars.ReadWrite offline_access'
+        scope: 'https://graph.microsoft.com/Calendars.ReadWrite https://graph.microsoft.com/Mail.Read offline_access'
       })
     );
 

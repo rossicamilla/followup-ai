@@ -2,9 +2,10 @@ const axios = require('axios');
 const { createClient } = require('@supabase/supabase-js');
 const { encrypt, decrypt, isEncrypted } = require('./tokenCrypto');
 
+// Service key: bypassa RLS per operazioni server-side sui token OAuth
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
+  process.env.SUPABASE_SERVICE_KEY
 );
 
 const MICROSOFT_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID;
