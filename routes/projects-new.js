@@ -124,8 +124,7 @@ router.patch('/:id', requireAuth, async (req, res) => {
         ...(description !== undefined && { description }),
         ...(market && { market }),
         ...(stage && { stage }),
-        // priority solo per idea
-        ...(stage === 'idea' && priority ? { priority } : stage && stage !== 'idea' ? { priority: null } : priority ? { priority } : {}),
+        ...(priority ? { priority } : {}),
         ...(origin !== undefined && { origin }),
         ...(supplier !== undefined && { supplier }),
         ...(weight_format !== undefined && { weight_format }),
