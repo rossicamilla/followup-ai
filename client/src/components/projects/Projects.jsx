@@ -913,9 +913,13 @@ export default function Projects({ onProponiPipeline }) {
 
         {profile?.role === 'admin' && (
           <>
-            <button onClick={handleDedup} disabled={deduping} title="Rimuovi duplicati"
-              className="text-sm font-600 rounded-lg p-2 border border-warm-200 hover:border-red-300 text-warm-400 hover:text-red-500 transition-colors disabled:opacity-40">
-              {deduping ? <span className="w-3.5 h-3.5 border-2 border-red-300 border-t-transparent rounded-full animate-spin block"/> : <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5"><path d="M4 4l8 8M12 4l-8 8"/></svg>}
+            <button onClick={handleDedup} disabled={deduping}
+              className="text-xs font-600 rounded-lg px-3 py-2 border border-warm-200 hover:border-red-300 text-warm-500 hover:text-red-500 transition-colors disabled:opacity-40 flex items-center gap-1.5">
+              {deduping
+                ? <span className="w-3 h-3 border-2 border-red-300 border-t-transparent rounded-full animate-spin"/>
+                : <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+              }
+              Elimina duplicati
             </button>
             <input ref={fileInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleSync}/>
             <button onClick={() => fileInputRef.current?.click()} disabled={syncing}

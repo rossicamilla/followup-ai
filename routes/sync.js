@@ -200,10 +200,10 @@ router.post('/progetti', requireSyncAuth, upload.single('file'), async (req, res
 // ── POST /api/sync/dedup — rimuovi duplicati senza file Excel ────────────────
 router.post('/dedup', requireSyncAuth, async (req, res) => {
   try {
-    const { data, error } = await sb
-      .from('projects')
-      .select('id, name, created_at')
-      .order('created_at', { ascending: true });
+    const userId = req.user?.id
+    let query = sb.from('projects').select('id, name, created_at').order('created_at', { ascending: true })
+    if (userId) query = query.eq('user_id', userId)
+    const { data, error } = await query;
 
     if (error) throw new Error(error.message);
 

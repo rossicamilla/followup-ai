@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { api } from '../../lib/api'
-import { useApp } from '../../App'
+import { useApp, useConfirm } from '../../App'
 import ContactTimeline from '../contacts/ContactTimeline'
 import {
   DndContext, PointerSensor, TouchSensor, useSensor, useSensors,
@@ -18,6 +18,7 @@ const AVATARS = ['bg-brand-100 text-brand-700', 'bg-blue-100 text-blue-700', 'bg
 
 function ContactModal({ contact, onClose, onUpdated, onDeleted }) {
   const { profile } = useApp()
+  const confirm = useConfirm()
   const [activeTab, setActiveTab] = useState('info')
   const [form, setForm] = useState({
     name: contact.name || '',
@@ -42,7 +43,7 @@ function ContactModal({ contact, onClose, onUpdated, onDeleted }) {
   }
 
   async function deleteContact() {
-    if (!confirm(`Eliminare il contatto "${contact.name}"?`)) return
+    if (!await confirm(`Eliminare "${contact.name}"?`, { danger: true, confirmLabel: 'Elimina' })) return
     setDeleting(true)
     try {
       await api(`/api/contacts/${contact.id}`, { method: 'DELETE' })
