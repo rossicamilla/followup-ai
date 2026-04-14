@@ -779,7 +779,8 @@ export default function Projects({ onProponiPipeline }) {
   const [deduping, setDeduping]       = useState(false)
   const [syncResult, setSyncResult]   = useState(null)
   const [activeId, setActiveId]       = useState(null)
-  const [originalStage, setOriginalStage] = useState(null)
+  const originalStageRef = useRef(null)   // ref evita stale closure in handleDragEnd
+  const currentStageRef  = useRef(null)
   const fileInputRef = useRef(null)
 
   const sensors = useSensors(
@@ -821,60 +822,58 @@ export default function Projects({ onProponiPipeline }) {
   function handleDragStart({ active }) {
     setActiveId(active.id)
     const p = projects.find(x => x.id === active.id)
-    setOriginalStage(p?.stage ?? null)
+    originalStageRef.current = p?.stage ?? null
+    currentStageRef.current  = p?.stage ?? null
   }
 
   function handleDragOver({ active, over }) {
     if (!over || active.id === over.id) return
-    const activeProj = projects.find(p => p.id === active.id)
-    if (!activeProj) return
 
-    const overIsColumn = COLUMNS.some(c => c.key === over.id)
+    setProjects(prev => {
+      const activeProj = prev.find(p => p.id === active.id)
+      if (!activeProj) return prev
 
-    if (overIsColumn) {
-      // hovering su colonna vuota
-      if (activeProj.stage !== over.id) {
-        setProjects(prev => prev.map(p => p.id === active.id ? { ...p, stage: over.id } : p))
+      const overIsColumn = COLUMNS.some(c => c.key === over.id)
+
+      if (overIsColumn) {
+        if (activeProj.stage === over.id) return prev
+        currentStageRef.current = over.id
+        return prev.map(p => p.id === active.id ? { ...p, stage: over.id } : p)
       }
-      return
-    }
 
-    // hovering su un'altra card
-    const overProj = projects.find(p => p.id === over.id)
-    if (!overProj) return
+      const overProj = prev.find(p => p.id === over.id)
+      if (!overProj) return prev
 
-    if (activeProj.stage !== overProj.stage) {
-      // cross-column: cambia stage e inserisce nella posizione della card target
-      setProjects(prev => {
+      if (activeProj.stage !== overProj.stage) {
+        currentStageRef.current = overProj.stage
         const from = prev.findIndex(p => p.id === active.id)
         const to   = prev.findIndex(p => p.id === over.id)
         const next = [...prev]
-        next[from] = { ...next[from], stage: overProj.stage }
         next.splice(from, 1)
         next.splice(to, 0, { ...activeProj, stage: overProj.stage })
         return next
-      })
-    } else {
-      // stessa colonna: riordina
-      setProjects(prev => {
+      } else {
         const from = prev.findIndex(p => p.id === active.id)
         const to   = prev.findIndex(p => p.id === over.id)
         return arrayMove(prev, from, to)
-      })
-    }
+      }
+    })
   }
 
   async function handleDragEnd({ active }) {
     setActiveId(null)
-    const project = projects.find(p => p.id === active.id)
-    const currentStage = project?.stage
-    if (!project || currentStage === originalStage) { setOriginalStage(null); return }
+    const newStage  = currentStageRef.current
+    const origStage = originalStageRef.current
+    originalStageRef.current = null
+    currentStageRef.current  = null
+
+    if (!newStage || newStage === origStage) return
+
     try {
-      await api(`/api/projects/${active.id}`, { method: 'PATCH', body: { stage: currentStage } })
+      await api(`/api/projects/${active.id}`, { method: 'PATCH', body: { stage: newStage } })
     } catch {
-      setProjects(prev => prev.map(p => p.id === active.id ? { ...p, stage: originalStage } : p))
+      setProjects(prev => prev.map(p => p.id === active.id ? { ...p, stage: origStage } : p))
     }
-    setOriginalStage(null)
   }
 
   async function handleDedup() {
