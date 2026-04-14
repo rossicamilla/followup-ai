@@ -13,7 +13,7 @@ const stageMap = Object.fromEntries(STAGES.map(s => [s.key, s]))
 const AVATARS = ['bg-brand-100 text-brand-700','bg-blue-100 text-blue-700','bg-orange-100 text-orange-700','bg-purple-100 text-purple-700','bg-amber-100 text-amber-700']
 
 // ── Vista: Lista contatti ─────────────────────────────────────────────
-function ListView({ contacts, loading, onSelect, onNew, onImport, importing, importResult, onImportOutlook, importingOutlook }) {
+function ListView({ contacts, loading, onSelect, onNew, onImport, importing, importResult, onImportOutlook, importingOutlook, onDeleteOutlook, deletingOutlook }) {
   const { profile } = useApp()
   const [search, setSearch] = useState('')
   const [filterStage, setFilterStage] = useState('')
@@ -48,6 +48,16 @@ function ListView({ contacts, loading, onSelect, onNew, onImport, importing, imp
                     : <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 8h6M8 5v6"/></svg>}
                   Outlook
                 </button>
+                {contacts.some(c => c.source === 'outlook') && (
+                  <button onClick={onDeleteOutlook} disabled={deletingOutlook}
+                    title="Elimina i tuoi contatti importati da Outlook"
+                    className="text-xs font-600 rounded-lg px-3 py-2 border border-warm-200 hover:border-red-300 text-warm-400 hover:text-red-500 transition-colors flex items-center gap-1.5 disabled:opacity-40">
+                    {deletingOutlook
+                      ? <span className="w-3 h-3 border-2 border-red-300 border-t-transparent rounded-full animate-spin"/>
+                      : <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5"><path d="M3 3l10 10M13 3L3 13"/></svg>}
+                    Rimuovi Outlook
+                  </button>
+                )}
                 <button onClick={onImport} disabled={importing}
                   title="Importa clienti da Progetti e Vendite"
                   className="text-xs font-600 rounded-lg px-3 py-2 border border-warm-200 hover:border-brand-300 text-warm-500 hover:text-brand-600 transition-colors flex items-center gap-1.5 disabled:opacity-40">
@@ -84,9 +94,11 @@ function ListView({ contacts, loading, onSelect, onNew, onImport, importing, imp
       {importResult && (
         <div className={`mx-0 px-4 py-2.5 text-xs font-500 flex items-center justify-between gap-2 border-b ${importResult.ok ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
           <span>{importResult.ok
-            ? (importResult.imported > 0
-                ? `✓ ${importResult.imported} contatti importati${importResult.source === 'outlook' ? ' da Outlook' : ' da Progetti/Vendite'}${importResult.skipped > 0 ? ` · ${importResult.skipped} già presenti` : ''}`
-                : '✓ Nessun nuovo contatto da importare — tutti già presenti')
+            ? importResult.source === 'delete'
+              ? `✓ ${importResult.deleted} contatti Outlook eliminati`
+              : (importResult.imported > 0
+                  ? `✓ ${importResult.imported} contatti importati${importResult.source === 'outlook' ? ' da Outlook' : ' da Progetti/Vendite'}${importResult.skipped > 0 ? ` · ${importResult.skipped} già presenti` : ''}`
+                  : '✓ Nessun nuovo contatto da importare — tutti già presenti')
             : `✗ ${importResult.error}`}
           </span>
         </div>
@@ -567,6 +579,7 @@ export default function Contacts() {
   const [current, setCurrent]   = useState(null)  // contatto selezionato
   const [importing, setImporting]               = useState(false)
   const [importingOutlook, setImportingOutlook] = useState(false)
+  const [deletingOutlook, setDeletingOutlook]   = useState(false)
   const [importResult, setImportResult]         = useState(null)
 
   const load = () => {
@@ -604,6 +617,19 @@ export default function Contacts() {
     setImportingOutlook(false)
   }
 
+  async function handleDeleteOutlookContacts() {
+    if (!window.confirm('Eliminare tutti i tuoi contatti importati da Outlook?')) return
+    setDeletingOutlook(true)
+    try {
+      const d = await api('/api/contacts/mine?source=outlook', { method: 'DELETE', body: {} })
+      setImportResult({ ok: true, imported: 0, skipped: 0, source: 'delete', deleted: d.deleted })
+      load()
+    } catch (e) {
+      setImportResult({ ok: false, error: e.message })
+    }
+    setDeletingOutlook(false)
+  }
+
   function openProfile(contact) { setCurrent(contact); setView('profile') }
   function openEdit(contact)    { setCurrent(contact); setView('edit') }
   function openNew()            { setCurrent(null);    setView('new') }
@@ -639,6 +665,8 @@ export default function Contacts() {
       importResult={importResult}
       onImportOutlook={handleImportOutlook}
       importingOutlook={importingOutlook}
+      onDeleteOutlook={handleDeleteOutlookContacts}
+      deletingOutlook={deletingOutlook}
     />
   )
 

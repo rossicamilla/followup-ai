@@ -355,4 +355,18 @@ Rispondi SOLO con il testo del riepilogo, senza titoli o formattazioni markdown.
   }
 });
 
+// DELETE /api/contacts/mine?source=outlook — elimina i propri contatti (opzionalmente filtrati per source)
+router.delete('/mine', requireAuth, async (req, res) => {
+  const { source } = req.query;
+  try {
+    let query = sb.from('contacts').delete().eq('owner_id', req.profile.id);
+    if (source) query = query.eq('source', source);
+    const { error, count } = await query.select('id', { count: 'exact', head: false });
+    if (error) throw error;
+    res.json({ deleted: count || 0 });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;
