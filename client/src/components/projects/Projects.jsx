@@ -86,6 +86,156 @@ const STEP_COLORS = [
   { bg: 'bg-orange-50',  border: 'border-l-orange-400',  dot: 'bg-orange-500',  text: 'text-orange-700',  badge: 'bg-orange-100 text-orange-700'  },
 ]
 
+// Palette Gantt (row bg + bar color inline)
+const GANTT_PALETTE = [
+  { row: '#fafafa', bar: '#a5b4fc', barDone: '#6366f1', text: '#4338ca' }, // indigo
+  { row: '#f0f9ff', bar: '#93c5fd', barDone: '#3b82f6', text: '#1d4ed8' }, // blue
+  { row: '#ecfeff', bar: '#67e8f9', barDone: '#06b6d4', text: '#0e7490' }, // cyan
+  { row: '#f0fdf4', bar: '#6ee7b7', barDone: '#10b981', text: '#047857' }, // teal/emerald
+  { row: '#f5f3ff', bar: '#c4b5fd', barDone: '#8b5cf6', text: '#6d28d9' }, // violet
+  { row: '#fdf4ff', bar: '#e879f9', barDone: '#a21caf', text: '#86198f' }, // fuchsia
+  { row: '#fff1f2', bar: '#fda4af', barDone: '#f43f5e', text: '#be123c' }, // rose
+  { row: '#fff7ed', bar: '#fdba74', barDone: '#f97316', text: '#c2410c' }, // orange
+]
+
+// ── Gantt View ────────────────────────────────────────────────────────────────
+function GanttView({ steps, onEditDates }) {
+  const today = new Date(); today.setHours(0,0,0,0)
+
+  // Raccoglie tutte le date presenti
+  const allDates = []
+  steps.forEach(s => {
+    if (s.start_date) allDates.push(new Date(s.start_date))
+    if (s.end_date)   allDates.push(new Date(s.end_date))
+    if (s.completed_at) allDates.push(new Date(s.completed_at))
+  })
+  allDates.push(today)
+
+  // Range: mese iniziale – mese finale, con 1 mese di padding su ogni lato
+  let rStart = new Date(Math.min(...allDates.map(d => d.getTime())))
+  let rEnd   = new Date(Math.max(...allDates.map(d => d.getTime())))
+  rStart = new Date(rStart.getFullYear(), rStart.getMonth() - 1, 1)
+  rEnd   = new Date(rEnd.getFullYear(),   rEnd.getMonth()   + 2, 0)
+
+  const totalMs = rEnd.getTime() - rStart.getTime()
+  const pct = ms => ((ms - rStart.getTime()) / totalMs * 100).toFixed(3) + '%'
+  const pctW = (a, b) => (Math.max(0, b.getTime() - a.getTime()) / totalMs * 100).toFixed(3) + '%'
+
+  // Colonne mesi
+  const months = []
+  let m = new Date(rStart.getFullYear(), rStart.getMonth(), 1)
+  while (m <= rEnd) {
+    const ms = new Date(m.getFullYear(), m.getMonth(), 1)
+    const me = new Date(m.getFullYear(), m.getMonth() + 1, 0)
+    months.push({
+      label: m.toLocaleDateString('it-IT', { month: 'short' }).toUpperCase() + ' ' + String(m.getFullYear()).slice(2),
+      left:  pct(Math.max(ms.getTime(), rStart.getTime())),
+      width: pctW(ms > rStart ? ms : rStart, me < rEnd ? me : rEnd),
+    })
+    m.setMonth(m.getMonth() + 1)
+  }
+
+  const todayLeft = pct(today.getTime())
+  const LABEL_W = 152
+
+  const fmt = d => new Date(d).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })
+
+  return (
+    <div className="overflow-x-auto">
+      <div style={{ minWidth: 600 }}>
+
+        {/* Header mesi */}
+        <div className="flex sticky top-0 z-20 bg-white border-b border-warm-200">
+          <div style={{ width: LABEL_W, minWidth: LABEL_W }} className="flex-shrink-0 border-r border-warm-200 py-2 px-3">
+            <span className="text-2xs font-700 text-warm-400 uppercase tracking-wider">Fase</span>
+          </div>
+          <div className="flex-1 relative h-8">
+            {months.map((mo, i) => (
+              <div key={i} className="absolute top-0 h-full border-l border-warm-100 flex items-center justify-center"
+                style={{ left: mo.left, width: mo.width }}>
+                <span className="text-2xs font-700 text-warm-500 tracking-wide">{mo.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Righe step */}
+        {steps.map((step, i) => {
+          const pal = GANTT_PALETTE[i % GANTT_PALETTE.length]
+          const startD = step.start_date ? new Date(step.start_date) : null
+          const endD   = step.end_date   ? new Date(step.end_date)   : step.completed_at ? new Date(step.completed_at) : null
+          const hasBoth = startD && endD
+          const hasAny  = startD || endD
+
+          return (
+            <div key={step.id} className="flex border-b border-warm-100 group" style={{ background: pal.row }}>
+              {/* Label */}
+              <div style={{ width: LABEL_W, minWidth: LABEL_W, borderRight: '1px solid #e8e4de' }}
+                className="flex-shrink-0 flex items-center gap-2 px-3 py-3">
+                <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${step.completed ? 'bg-emerald-500' : 'bg-warm-300'}`}/>
+                <span className={`text-xs font-600 leading-tight ${step.completed ? 'line-through text-warm-400' : 'text-warm-800'}`}>
+                  {step.title}
+                </span>
+              </div>
+
+              {/* Barra */}
+              <div className="flex-1 relative" style={{ minHeight: 44 }}>
+                {/* Griglie mesi */}
+                {months.map((mo, mi) => (
+                  <div key={mi} className="absolute inset-y-0 border-l border-warm-100/70" style={{ left: mo.left }}/>
+                ))}
+
+                {/* Linea oggi */}
+                <div className="absolute inset-y-0 w-px z-10 pointer-events-none"
+                  style={{ left: todayLeft, background: '#f87171' }}/>
+
+                {hasBoth ? (
+                  <div className="absolute inset-y-2 rounded-lg flex items-center px-2 transition-all"
+                    style={{
+                      left:  pct(startD.getTime()),
+                      width: pctW(startD, endD),
+                      minWidth: 6,
+                      background: step.completed ? pal.barDone : pal.bar,
+                    }}>
+                    <span className="text-2xs font-600 text-white truncate drop-shadow-sm">{step.title}</span>
+                  </div>
+                ) : hasAny ? (
+                  // Solo una data: punto/diamond
+                  <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-sm rotate-45"
+                    style={{ left: `calc(${pct((startD || endD).getTime())} - 6px)`, background: pal.barDone }}/>
+                ) : (
+                  // Nessuna data: placeholder hover
+                  <button onClick={() => onEditDates(step)}
+                    className="absolute inset-2 rounded-lg border-2 border-dashed border-warm-200 hover:border-blue-300 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="text-2xs text-warm-400">+ date</span>
+                  </button>
+                )}
+
+                {/* Tooltip date su hover */}
+                {hasAny && (
+                  <button onClick={() => onEditDates(step)}
+                    className="absolute inset-y-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center"
+                    style={{ left: `calc(${pct((startD || endD).getTime())} + 4px)` }}>
+                    <span className="text-2xs text-warm-400 bg-white/80 rounded px-1 border border-warm-100 whitespace-nowrap">
+                      {startD ? fmt(startD) : '?'} – {endD ? fmt(endD) : '?'}
+                    </span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )
+        })}
+
+        {/* Legenda oggi */}
+        <div className="flex items-center gap-1.5 px-4 py-2 text-2xs text-warm-400">
+          <div className="w-3 h-0.5 bg-red-400 rounded"/>
+          <span>Oggi</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function MarketBadge({ market }) {
@@ -404,6 +554,9 @@ function SviluppoView({ project: initialProject, onBack, onSaved, onDeleted, onA
   const [editingNotes, setEditingNotes] = useState(false)
   const [editingStepId, setEditingStepId] = useState(null)
   const [stepNotesValue, setStepNotesValue] = useState('')
+  const [ganttMode, setGanttMode] = useState(false)
+  const [editingDatesId, setEditingDatesId] = useState(null)
+  const [datesForm, setDatesForm] = useState({ start_date: '', end_date: '' })
 
   const done = steps.filter(s => s.completed).length
   const pct = steps.length ? Math.round(done / steps.length * 100) : 0
@@ -467,6 +620,21 @@ function SviluppoView({ project: initialProject, onBack, onSaved, onDeleted, onA
     syncUp(updated)
   }
 
+  function openEditDates(step) {
+    setEditingDatesId(step.id)
+    setDatesForm({ start_date: step.start_date || '', end_date: step.end_date || '' })
+  }
+
+  async function saveStepDates(stepId) {
+    const updated = steps.map(s => s.id === stepId
+      ? { ...s, start_date: datesForm.start_date || null, end_date: datesForm.end_date || null }
+      : s)
+    setSteps(updated)
+    setEditingDatesId(null)
+    await api(`/api/projects/${project.id}/steps`, { method: 'PATCH', body: { dev_steps: updated } })
+    syncUp(updated)
+  }
+
   async function advance() {
     setAdvancing(true)
     try {
@@ -513,6 +681,32 @@ function SviluppoView({ project: initialProject, onBack, onSaved, onDeleted, onA
           {project.market && <MarketBadge market={project.market}/>}
         </div>
         <div className="flex-shrink-0 flex items-center gap-1.5 ml-1">
+          {/* Toggle timeline / gantt */}
+          <div className="flex rounded-lg border border-warm-200 overflow-hidden">
+            <button onClick={() => setGanttMode(false)}
+              className={`px-2.5 py-1.5 text-xs font-600 transition-colors flex items-center gap-1
+                ${!ganttMode ? 'bg-blue-500 text-white' : 'bg-white text-warm-400 hover:text-warm-700'}`}>
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
+                <circle cx="4" cy="4" r="1.5" fill="currentColor" stroke="none"/>
+                <line x1="7" y1="4" x2="14" y2="4"/>
+                <circle cx="4" cy="8" r="1.5" fill="currentColor" stroke="none"/>
+                <line x1="7" y1="8" x2="14" y2="8"/>
+                <circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+                <line x1="7" y1="12" x2="11" y2="12"/>
+              </svg>
+              Lista
+            </button>
+            <button onClick={() => setGanttMode(true)}
+              className={`px-2.5 py-1.5 text-xs font-600 transition-colors flex items-center gap-1 border-l border-warm-200
+                ${ganttMode ? 'bg-blue-500 text-white' : 'bg-white text-warm-400 hover:text-warm-700'}`}>
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
+                <rect x="1" y="3" width="7" height="2.5" rx="1" fill="currentColor" stroke="none"/>
+                <rect x="4" y="7" width="8" height="2.5" rx="1" fill="currentColor" stroke="none"/>
+                <rect x="2" y="11" width="10" height="2.5" rx="1" fill="currentColor" stroke="none"/>
+              </svg>
+              Gantt
+            </button>
+          </div>
           {profile?.role === 'admin' && (
             <button onClick={del} className="text-xs text-red-400 hover:text-red-600 border border-red-200 rounded-lg px-2.5 py-1.5 transition-colors">
               Elimina
@@ -521,7 +715,7 @@ function SviluppoView({ project: initialProject, onBack, onSaved, onDeleted, onA
           <button onClick={advance} disabled={advancing}
             className={`text-xs font-700 rounded-lg px-4 py-1.5 transition-all flex items-center gap-1.5
               ${allDone ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'bg-blue-100 hover:bg-blue-200 text-blue-700'} disabled:opacity-40`}>
-            {advancing ? '...' : <><span>Segna Pronto</span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3"><path d="M3 8h10M9 4l4 4-4 4"/></svg></>}
+            {advancing ? '...' : <><span>Pronto</span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3"><path d="M3 8h10M9 4l4 4-4 4"/></svg></>}
           </button>
         </div>
       </div>
@@ -542,7 +736,49 @@ function SviluppoView({ project: initialProject, onBack, onSaved, onDeleted, onA
         </div>
       </div>
 
-      {/* ── Contenuto scrollabile ── */}
+      {/* ── Gantt ── */}
+      {ganttMode && (
+        <div className="flex-1 overflow-auto scrollbar-none">
+          <div className="p-4">
+            <GanttView steps={steps} onEditDates={openEditDates}/>
+          </div>
+          {/* Modal date step nel gantt */}
+          {editingDatesId && (() => {
+            const step = steps.find(s => s.id === editingDatesId)
+            return (
+              <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                onClick={e => e.target === e.currentTarget && setEditingDatesId(null)}>
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5">
+                  <div className="font-700 text-sm text-warm-900 mb-4">{step?.title}</div>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-600 text-warm-500 mb-1 block">Data inizio</label>
+                      <input type="date" value={datesForm.start_date}
+                        onChange={e => setDatesForm(f => ({ ...f, start_date: e.target.value }))}
+                        className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400 bg-warm-50"/>
+                    </div>
+                    <div>
+                      <label className="text-xs font-600 text-warm-500 mb-1 block">Data fine</label>
+                      <input type="date" value={datesForm.end_date}
+                        onChange={e => setDatesForm(f => ({ ...f, end_date: e.target.value }))}
+                        className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400 bg-warm-50"/>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-4 justify-end">
+                    <button onClick={() => setEditingDatesId(null)}
+                      className="text-sm text-warm-500 border border-warm-200 rounded-xl px-4 py-2">Annulla</button>
+                    <button onClick={() => saveStepDates(editingDatesId)}
+                      className="text-sm font-600 bg-blue-500 text-white rounded-xl px-4 py-2 hover:bg-blue-600">Salva</button>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+        </div>
+      )}
+
+      {/* ── Timeline (lista) ── */}
+      {!ganttMode && (
       <div className="flex-1 overflow-y-auto scrollbar-none">
         <div className="max-w-xl mx-auto px-6 pt-5 pb-10">
 
@@ -624,6 +860,15 @@ function SviluppoView({ project: initialProject, onBack, onSaved, onDeleted, onA
                         </span>
                       )}
 
+                      {/* Bottone date */}
+                      <button onClick={() => openEditDates(step)}
+                        className={`p-1 rounded transition-all flex-shrink-0 mt-0.5
+                          ${(step.start_date || step.end_date) ? 'text-amber-400 hover:text-amber-600' : 'text-warm-200 hover:text-warm-400 opacity-0 group-hover:opacity-100'}`}>
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
+                          <rect x="1.5" y="2.5" width="13" height="12" rx="1.5"/><path d="M5 1v3M11 1v3M1.5 7h13"/>
+                        </svg>
+                      </button>
+
                       {/* Bottone note */}
                       <button onClick={() => { setEditingStepId(step.id); setStepNotesValue(step.notes || '') }}
                         className={`p-1 rounded transition-all flex-shrink-0 mt-0.5
@@ -639,6 +884,37 @@ function SviluppoView({ project: initialProject, onBack, onSaved, onDeleted, onA
                         </button>
                       )}
                     </div>
+
+                    {/* Date range chip */}
+                    {(step.start_date || step.end_date) && editingDatesId !== step.id && (
+                      <div className="flex items-center gap-1 mt-1">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3 text-amber-400 flex-shrink-0">
+                          <rect x="1.5" y="2.5" width="13" height="12" rx="1.5"/><path d="M5 1v3M11 1v3M1.5 7h13"/>
+                        </svg>
+                        <span className="text-xs text-warm-400">
+                          {step.start_date ? new Date(step.start_date).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' }) : '?'}
+                          {' – '}
+                          {step.end_date ? new Date(step.end_date).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' }) : '?'}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Form date inline */}
+                    {editingDatesId === step.id && (
+                      <div className="mt-2 flex items-center gap-2 flex-wrap">
+                        <input type="date" value={datesForm.start_date}
+                          onChange={e => setDatesForm(f => ({ ...f, start_date: e.target.value }))}
+                          className="text-xs border border-amber-200 rounded-lg px-2 py-1 focus:outline-none focus:border-amber-400 bg-amber-50"/>
+                        <span className="text-xs text-warm-400">–</span>
+                        <input type="date" value={datesForm.end_date}
+                          onChange={e => setDatesForm(f => ({ ...f, end_date: e.target.value }))}
+                          className="text-xs border border-amber-200 rounded-lg px-2 py-1 focus:outline-none focus:border-amber-400 bg-amber-50"/>
+                        <button onClick={() => saveStepDates(step.id)}
+                          className="text-xs font-600 bg-amber-500 text-white px-2.5 py-1 rounded-lg hover:bg-amber-600">Salva</button>
+                        <button onClick={() => setEditingDatesId(null)}
+                          className="text-xs text-warm-400 hover:text-warm-600 px-1 py-1">✕</button>
+                      </div>
+                    )}
 
                     {/* Note step — visualizzazione */}
                     {editingStepId === step.id ? (
@@ -696,6 +972,7 @@ function SviluppoView({ project: initialProject, onBack, onSaved, onDeleted, onA
 
         </div>
       </div>
+      )}
     </div>
   )
 }
