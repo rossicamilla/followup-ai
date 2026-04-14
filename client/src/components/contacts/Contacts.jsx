@@ -3,13 +3,11 @@ import { api } from '../../lib/api'
 import { useApp, useConfirm } from '../../App'
 import ContactTimeline from './ContactTimeline'
 
-const STAGES = [
-  { key: 'new',  label: 'Nuovo',   dot: 'bg-blue-400',   badge: 'bg-blue-50 text-blue-700',    header: 'from-blue-50',   border: 'border-blue-100' },
-  { key: 'warm', label: 'Tiepido', dot: 'bg-amber-400',  badge: 'bg-amber-50 text-amber-700',  header: 'from-amber-50',  border: 'border-amber-100' },
-  { key: 'hot',  label: 'Caldo',   dot: 'bg-orange-400', badge: 'bg-orange-50 text-orange-700',header: 'from-orange-50', border: 'border-orange-100' },
-  { key: 'won',  label: 'Vinto',   dot: 'bg-brand-500',  badge: 'bg-brand-50 text-brand-600',  header: 'from-brand-50',  border: 'border-brand-100' },
-]
-const stageMap = Object.fromEntries(STAGES.map(s => [s.key, s]))
+const CONTACT_TYPES = {
+  cliente:   { label: 'Cliente',   badge: 'bg-brand-50 text-brand-700 border border-brand-200',   dot: 'bg-brand-500',   pill: 'bg-brand-500 text-white'   },
+  fornitore: { label: 'Fornitore', badge: 'bg-teal-50 text-teal-700 border border-teal-200',       dot: 'bg-teal-500',    pill: 'bg-teal-500 text-white'    },
+  agente:    { label: 'Agente',    badge: 'bg-violet-50 text-violet-700 border border-violet-200', dot: 'bg-violet-500',  pill: 'bg-violet-500 text-white'  },
+}
 const AVATARS = ['bg-brand-100 text-brand-700','bg-blue-100 text-blue-700','bg-orange-100 text-orange-700','bg-purple-100 text-purple-700','bg-amber-100 text-amber-700']
 
 // ── Vista: Lista contatti ─────────────────────────────────────────────
@@ -89,14 +87,14 @@ function ListView({ contacts, loading, onSelect, onNew, onImport, importing, imp
         </div>
         <div className="flex gap-1.5 flex-wrap mt-2">
           {/* Tipo */}
-          {['', 'cliente', 'fornitore'].map(t => (
-            <button key={t} type="button" onClick={() => setFilterType(t)}
-              className={`text-xs font-600 px-3 py-1 rounded-full transition-all ${
-                filterType === t
-                  ? t === 'cliente' ? 'bg-brand-500 text-white' : t === 'fornitore' ? 'bg-teal-500 text-white' : 'bg-warm-900 text-white'
-                  : 'bg-warm-100 text-warm-500 hover:bg-warm-200'
-              }`}>
-              {t === '' ? 'Tutti' : t === 'cliente' ? 'Clienti' : 'Fornitori'}
+          <button type="button" onClick={() => setFilterType('')}
+            className={`text-xs font-600 px-3 py-1 rounded-full transition-all ${filterType === '' ? 'bg-warm-900 text-white' : 'bg-warm-100 text-warm-500 hover:bg-warm-200'}`}>
+            Tutti
+          </button>
+          {Object.entries(CONTACT_TYPES).map(([key, ct]) => (
+            <button key={key} type="button" onClick={() => setFilterType(key)}
+              className={`text-xs font-600 px-3 py-1 rounded-full transition-all ${filterType === key ? ct.pill : 'bg-warm-100 text-warm-500 hover:bg-warm-200'}`}>
+              {ct.label + 'i'}
             </button>
           ))}
           <div className="w-px bg-warm-200 mx-0.5"/>
@@ -155,7 +153,7 @@ function ListView({ contacts, loading, onSelect, onNew, onImport, importing, imp
                 <tr>
                   <th className="text-left px-6 py-3 text-xs font-600 text-warm-500 uppercase tracking-wider">Contatto</th>
                   <th className="text-left px-4 py-3 text-xs font-600 text-warm-500 uppercase tracking-wider">Azienda</th>
-                  <th className="text-left px-4 py-3 text-xs font-600 text-warm-500 uppercase tracking-wider">Stage</th>
+                  <th className="text-left px-4 py-3 text-xs font-600 text-warm-500 uppercase tracking-wider">Tipo</th>
                   <th className="text-left px-4 py-3 text-xs font-600 text-warm-500 uppercase tracking-wider">Responsabile</th>
                   <th className="text-left px-4 py-3 text-xs font-600 text-warm-500 uppercase tracking-wider">Task aperti</th>
                   <th className="text-left px-4 py-3 text-xs font-600 text-warm-500 uppercase tracking-wider">Progetti</th>
@@ -165,7 +163,7 @@ function ListView({ contacts, loading, onSelect, onNew, onImport, importing, imp
               </thead>
               <tbody className="divide-y divide-warm-100">
                 {filtered.map((c, i) => {
-                  const stage = stageMap[c.stage]
+                  const ct = CONTACT_TYPES[c.contact_type]
                   const openTasks = (c.tasks || []).filter(t => !t.completed)
                   const urgentTask = openTasks.find(t => t.urgent || (t.due_date && t.due_date < today))
                   return (
@@ -183,17 +181,11 @@ function ListView({ contacts, loading, onSelect, onNew, onImport, importing, imp
                       </td>
                       <td className="px-4 py-3 text-warm-600">{c.company || '—'}</td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {stage && <span className={`inline-flex items-center gap-1.5 text-xs font-600 px-2 py-0.5 rounded-full ${stage.badge}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${stage.dot}`}/>{stage.label}
-                          </span>}
-                          {c.contact_type && (
-                            <span className={`text-xs font-600 px-2 py-0.5 rounded-full capitalize
-                              ${c.contact_type === 'cliente' ? 'bg-brand-50 text-brand-600' : 'bg-teal-50 text-teal-600'}`}>
-                              {c.contact_type}
+                        {ct
+                          ? <span className={`inline-flex items-center gap-1.5 text-xs font-600 px-2.5 py-0.5 rounded-full ${ct.badge}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${ct.dot}`}/>{ct.label}
                             </span>
-                          )}
-                        </div>
+                          : <span className="text-xs text-warm-300">—</span>}
                       </td>
                       <td className="px-4 py-3 text-warm-500 text-xs">{c.owner?.full_name || '—'}</td>
                       <td className="px-4 py-3">
@@ -222,7 +214,7 @@ function ListView({ contacts, loading, onSelect, onNew, onImport, importing, imp
             {/* Mobile */}
             <div className="md:hidden divide-y divide-warm-100">
               {filtered.map((c, i) => {
-                const stage = stageMap[c.stage]
+                const ct = CONTACT_TYPES[c.contact_type]
                 const openTasks = (c.tasks || []).filter(t => !t.completed)
                 return (
                   <div key={c.id} onClick={() => onSelect(c)} className="flex items-center gap-3 px-4 py-3 hover:bg-warm-50 cursor-pointer transition-colors">
@@ -233,7 +225,7 @@ function ListView({ contacts, loading, onSelect, onNew, onImport, importing, imp
                       <div className="font-600 text-warm-900 text-sm">{c.name}</div>
                       <div className="text-xs text-warm-400 truncate">{c.company || c.email}</div>
                     </div>
-                    {stage && <span className={`text-2xs font-600 px-2 py-0.5 rounded-full flex-shrink-0 ${stage.badge}`}>{stage.label}</span>}
+                    {ct && <span className={`text-2xs font-600 px-2 py-0.5 rounded-full flex-shrink-0 ${ct.badge}`}>{ct.label}</span>}
                     {openTasks.length > 0 && <span className="text-xs text-warm-400 flex-shrink-0">{openTasks.length} task</span>}
                     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4 text-warm-300 flex-shrink-0"><path d="M6 12l4-4-4-4"/></svg>
                   </div>
@@ -252,7 +244,7 @@ function ProfileView({ contact, onBack, onEdit, onDeleted }) {
   const { profile } = useApp()
   const confirm = useConfirm()
   const [activeTab, setActiveTab] = useState('riepilogo')
-  const stage = stageMap[contact.stage] || stageMap.new
+  const ct = CONTACT_TYPES[contact.contact_type]
   const initials = contact.name?.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase()
   const today = new Date().toISOString().split('T')[0]
   const openTasks = (contact.tasks || []).filter(t => !t.completed)
@@ -291,26 +283,24 @@ function ProfileView({ contact, onBack, onEdit, onDeleted }) {
       </div>
 
       {/* Hero */}
-      <div className={`bg-gradient-to-b ${stage.header} to-white px-6 pt-6 pb-0 flex-shrink-0`}>
+      <div className="bg-white px-6 pt-6 pb-0 flex-shrink-0 border-b border-warm-100">
         <div className="flex items-start gap-4 mb-4">
-          <div className="w-16 h-16 rounded-2xl bg-white shadow flex items-center justify-center text-2xl font-900 text-brand-700 flex-shrink-0 border border-warm-100">
+          <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-900 flex-shrink-0 border
+            ${ct ? ct.badge : 'bg-warm-50 text-warm-400 border-warm-100'}`}>
             {initials}
           </div>
           <div className="flex-1 min-w-0 pt-1">
             <h2 className="text-xl font-800 text-warm-900 leading-tight">{contact.name}</h2>
             {contact.company && <p className="text-sm text-warm-500 mt-0.5">{contact.company}</p>}
             <div className="flex items-center gap-2 mt-2 flex-wrap">
-              <span className={`inline-flex items-center gap-1.5 text-xs font-700 px-2.5 py-1 rounded-full ${stage.badge}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${stage.dot}`}/>{stage.label}
-              </span>
-              {contact.contact_type && (
-                <span className={`text-xs font-700 px-2.5 py-1 rounded-full capitalize
-                  ${contact.contact_type === 'cliente' ? 'bg-brand-50 text-brand-700 border border-brand-200' : 'bg-teal-50 text-teal-700 border border-teal-200'}`}>
-                  {contact.contact_type}
-                </span>
-              )}
+              {ct
+                ? <span className={`inline-flex items-center gap-1.5 text-xs font-700 px-2.5 py-1 rounded-full ${ct.badge}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${ct.dot}`}/>{ct.label}
+                  </span>
+                : <span className="text-xs text-warm-400 bg-warm-50 border border-warm-200 px-2.5 py-1 rounded-full">Tipo non impostato</span>
+              }
               {contact.owner && (
-                <span className="text-xs text-warm-500 bg-white/80 border border-warm-100 px-2 py-0.5 rounded-full">{contact.owner.full_name}</span>
+                <span className="text-xs text-warm-500 bg-warm-50 border border-warm-100 px-2 py-0.5 rounded-full">{contact.owner.full_name}</span>
               )}
             </div>
           </div>
@@ -497,7 +487,6 @@ function EditView({ contact, onBack, onSaved, onDeleted }) {
     company:      contact?.company      || '',
     email:        contact?.email        || '',
     phone:        contact?.phone        || '',
-    stage:        contact?.stage        || 'new',
     notes:        contact?.notes        || '',
     owner_id:     contact?.owner?.id    || '',
     contact_type: contact?.contact_type || '',
@@ -569,24 +558,15 @@ function EditView({ contact, onBack, onSaved, onDeleted }) {
             <input value={form.phone} onChange={e => set('phone', e.target.value)}
               className="w-full text-sm border border-warm-200 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-400/10 bg-warm-50"/>
           </div>
-          <div>
-            <label className="text-xs font-700 text-warm-500 mb-1.5 block uppercase tracking-wide">Stage</label>
-            <select value={form.stage} onChange={e => set('stage', e.target.value)}
-              className="w-full text-sm border border-warm-200 rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-brand-400 bg-warm-50">
-              {STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
-            </select>
-          </div>
-          <div>
+          <div className="sm:col-span-2">
             <label className="text-xs font-700 text-warm-500 mb-1.5 block uppercase tracking-wide">Tipo</label>
             <div className="flex gap-2">
-              {[['cliente','Cliente'],['fornitore','Fornitore']].map(([val, lbl]) => (
+              {Object.entries(CONTACT_TYPES).map(([val, ct]) => (
                 <button key={val} type="button"
                   onClick={() => set('contact_type', form.contact_type === val ? '' : val)}
                   className={`flex-1 py-2 rounded-xl text-xs font-600 border-2 transition-all
-                    ${form.contact_type === val
-                      ? val === 'cliente' ? 'bg-brand-50 text-brand-700 border-brand-400' : 'bg-teal-50 text-teal-700 border-teal-400'
-                      : 'border-warm-200 text-warm-400 hover:border-warm-300'}`}>
-                  {lbl}
+                    ${form.contact_type === val ? ct.badge.replace('border', 'border-2') : 'border-warm-200 text-warm-400 hover:border-warm-300'}`}>
+                  {ct.label}
                 </button>
               ))}
             </div>
