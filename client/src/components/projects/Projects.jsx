@@ -66,6 +66,148 @@ const ORIGIN_COLORS = {
 const ORIGIN_LABELS = { cliente: 'Richiesta cliente', interna: 'Opportunità interna' }
 const PRI_ORDER = { alta: 0, media: 1, bassa: 2 }
 
+const COUNTRIES = [
+  { code: 'WW', name: 'Vari / Worldwide' },
+  { code: 'AF', name: 'Afghanistan' },
+  { code: 'AL', name: 'Albania' },
+  { code: 'DZ', name: 'Algeria' },
+  { code: 'AD', name: 'Andorra' },
+  { code: 'AO', name: 'Angola' },
+  { code: 'SA', name: 'Arabia Saudita' },
+  { code: 'AR', name: 'Argentina' },
+  { code: 'AM', name: 'Armenia' },
+  { code: 'AU', name: 'Australia' },
+  { code: 'AT', name: 'Austria' },
+  { code: 'AZ', name: 'Azerbaigian' },
+  { code: 'BS', name: 'Bahamas' },
+  { code: 'BH', name: 'Bahrain' },
+  { code: 'BD', name: 'Bangladesh' },
+  { code: 'BE', name: 'Belgio' },
+  { code: 'BY', name: 'Bielorussia' },
+  { code: 'MM', name: 'Birmania' },
+  { code: 'BO', name: 'Bolivia' },
+  { code: 'BA', name: 'Bosnia-Erzegovina' },
+  { code: 'BW', name: 'Botswana' },
+  { code: 'BR', name: 'Brasile' },
+  { code: 'BN', name: 'Brunei' },
+  { code: 'BG', name: 'Bulgaria' },
+  { code: 'KH', name: 'Cambogia' },
+  { code: 'CM', name: 'Camerun' },
+  { code: 'CA', name: 'Canada' },
+  { code: 'TD', name: 'Ciad' },
+  { code: 'CL', name: 'Cile' },
+  { code: 'CN', name: 'Cina' },
+  { code: 'CY', name: 'Cipro' },
+  { code: 'CO', name: 'Colombia' },
+  { code: 'KP', name: 'Corea del Nord' },
+  { code: 'KR', name: 'Corea del Sud' },
+  { code: "CI", name: "Costa d'Avorio" },
+  { code: 'CR', name: 'Costa Rica' },
+  { code: 'CU', name: 'Cuba' },
+  { code: 'DK', name: 'Danimarca' },
+  { code: 'EC', name: 'Ecuador' },
+  { code: 'EG', name: 'Egitto' },
+  { code: 'AE', name: 'Emirati Arabi Uniti' },
+  { code: 'EE', name: 'Estonia' },
+  { code: 'ET', name: 'Etiopia' },
+  { code: 'PH', name: 'Filippine' },
+  { code: 'FI', name: 'Finlandia' },
+  { code: 'FR', name: 'Francia' },
+  { code: 'GA', name: 'Gabon' },
+  { code: 'GE', name: 'Georgia' },
+  { code: 'DE', name: 'Germania' },
+  { code: 'GH', name: 'Ghana' },
+  { code: 'JP', name: 'Giappone' },
+  { code: 'JO', name: 'Giordania' },
+  { code: 'EL', name: 'Grecia' },
+  { code: 'GT', name: 'Guatemala' },
+  { code: 'GN', name: 'Guinea' },
+  { code: 'GY', name: 'Guyana' },
+  { code: 'HT', name: 'Haiti' },
+  { code: 'HN', name: 'Honduras' },
+  { code: 'HK', name: 'Hong Kong' },
+  { code: 'IN', name: 'India' },
+  { code: 'ID', name: 'Indonesia' },
+  { code: 'IR', name: 'Iran' },
+  { code: 'IQ', name: 'Iraq' },
+  { code: 'IE', name: 'Irlanda' },
+  { code: 'IS', name: 'Islanda' },
+  { code: 'IL', name: 'Israele' },
+  { code: 'IT', name: 'Italia' },
+  { code: 'KZ', name: 'Kazakistan' },
+  { code: 'KE', name: 'Kenya' },
+  { code: 'KW', name: 'Kuwait' },
+  { code: 'LA', name: 'Laos' },
+  { code: 'LV', name: 'Lettonia' },
+  { code: 'LB', name: 'Libano' },
+  { code: 'LY', name: 'Libia' },
+  { code: 'LT', name: 'Lituania' },
+  { code: 'LU', name: 'Lussemburgo' },
+  { code: 'MK', name: 'Macedonia' },
+  { code: 'MG', name: 'Madagascar' },
+  { code: 'MY', name: 'Malesia' },
+  { code: 'MT', name: 'Malta' },
+  { code: 'MA', name: 'Marocco' },
+  { code: 'MX', name: 'Messico' },
+  { code: 'MD', name: 'Moldavia' },
+  { code: 'MC', name: 'Monaco' },
+  { code: 'MN', name: 'Mongolia' },
+  { code: 'ME', name: 'Montenegro' },
+  { code: 'MZ', name: 'Mozambico' },
+  { code: 'NA', name: 'Namibia' },
+  { code: 'NP', name: 'Nepal' },
+  { code: 'NI', name: 'Nicaragua' },
+  { code: 'NE', name: 'Niger' },
+  { code: 'NG', name: 'Nigeria' },
+  { code: 'NO', name: 'Norvegia' },
+  { code: 'NZ', name: 'Nuova Zelanda' },
+  { code: 'NL', name: 'Olanda' },
+  { code: 'OM', name: 'Oman' },
+  { code: 'PK', name: 'Pakistan' },
+  { code: 'PA', name: 'Panamá' },
+  { code: 'PY', name: 'Paraguay' },
+  { code: 'PE', name: 'Perù' },
+  { code: 'PL', name: 'Polonia' },
+  { code: 'PT', name: 'Portogallo' },
+  { code: 'QA', name: 'Qatar' },
+  { code: 'GB', name: 'Regno Unito' },
+  { code: 'CZ', name: 'Repubblica Ceca' },
+  { code: 'DO', name: 'Repubblica Dominicana' },
+  { code: 'RO', name: 'Romania' },
+  { code: 'RW', name: 'Ruanda' },
+  { code: 'RU', name: 'Russia' },
+  { code: 'SN', name: 'Senegal' },
+  { code: 'RS', name: 'Serbia' },
+  { code: 'SG', name: 'Singapore' },
+  { code: 'SY', name: 'Siria' },
+  { code: 'SK', name: 'Slovacchia' },
+  { code: 'SI', name: 'Slovenia' },
+  { code: 'SO', name: 'Somalia' },
+  { code: 'ES', name: 'Spagna' },
+  { code: 'LK', name: 'Sri Lanka' },
+  { code: 'US', name: "Stati Uniti d'America" },
+  { code: 'ZA', name: 'Sudafrica' },
+  { code: 'SD', name: 'Sudan' },
+  { code: 'SE', name: 'Svezia' },
+  { code: 'CH', name: 'Svizzera' },
+  { code: 'TJ', name: 'Tagikistan' },
+  { code: 'TZ', name: 'Tanzania' },
+  { code: 'TH', name: 'Thailandia' },
+  { code: 'TN', name: 'Tunisia' },
+  { code: 'TR', name: 'Turchia' },
+  { code: 'TM', name: 'Turkmenistan' },
+  { code: 'UA', name: 'Ucraina' },
+  { code: 'UG', name: 'Uganda' },
+  { code: 'HU', name: 'Ungheria' },
+  { code: 'UY', name: 'Uruguay' },
+  { code: 'UZ', name: 'Uzbekistan' },
+  { code: 'VE', name: 'Venezuela' },
+  { code: 'VN', name: 'Vietnam' },
+  { code: 'YE', name: 'Yemen' },
+  { code: 'ZM', name: 'Zambia' },
+  { code: 'ZW', name: 'Zimbabwe' },
+]
+
 const DEFAULT_DEV_STEPS = [
   { id: '1', title: 'Ricerca fornitore',     completed: false },
   { id: '2', title: 'Campione ricevuto',     completed: false },
@@ -500,18 +642,21 @@ function ProntoModal({ project, onClose, onSaved, onDeleted, onProponi }) {
             <input value={form.client} onChange={e => set('client', e.target.value)}
               className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50"/>
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="text-xs font-600 text-warm-500 mb-1 block">Paese</label>
-              <input value={form.country_code} onChange={e => set('country_code', e.target.value.toUpperCase().slice(0,2))}
-                placeholder="IT" maxLength={2}
-                className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50 uppercase text-center font-600 tracking-widest"/>
-            </div>
-            <div className="col-span-2">
-              <label className="text-xs font-600 text-warm-500 mb-1 block">Destinazione</label>
-              <input value={form.country} onChange={e => set('country', e.target.value)}
-                className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50"/>
-            </div>
+          <div>
+            <label className="text-xs font-600 text-warm-500 mb-1 block">Paese di destinazione</label>
+            <select
+              value={form.country_code}
+              onChange={e => {
+                const c = COUNTRIES.find(c => c.code === e.target.value)
+                set('country_code', e.target.value)
+                set('country', c?.name || '')
+              }}
+              className="w-full text-sm border border-warm-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400 bg-warm-50 text-warm-700">
+              <option value="">— Seleziona paese —</option>
+              {COUNTRIES.map(c => (
+                <option key={c.code} value={c.code}>{c.code} — {c.name}</option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="text-xs font-600 text-warm-500 mb-1 block">Note</label>
@@ -726,6 +871,13 @@ function SviluppoView({ project: initialProject, onBack, onSaved, onDeleted, onA
           {project.supplier && <span className="text-xs text-warm-500"><span className="text-warm-300 mr-0.5">Forn.</span>{project.supplier}</span>}
           {project.client   && <span className="text-xs text-warm-500"><span className="text-warm-300 mr-0.5">Buy.</span>{project.client}</span>}
           {project.weight_format && <span className="text-xs text-warm-400">{project.weight_format}</span>}
+          {project.country_code && (
+            <span className="text-xs text-warm-500 flex items-center gap-1">
+              <span className="text-warm-300">🌍</span>
+              <span className="font-600">{project.country_code}</span>
+              {project.country && <span className="text-warm-400">— {project.country}</span>}
+            </span>
+          )}
           <div className="flex-1"/>
           <span className="text-xs text-warm-400">{done} / {steps.length} completati</span>
           <span className="text-xs font-700 text-blue-600">{pct}%</span>
@@ -1070,6 +1222,7 @@ function ProjectCard({ project, col, onClick, onAdvance, onProponi, compact }) {
       {project.weight_format && <div className={`text-xs mb-1 ${pri ? pri.sub : 'text-warm-400'}`}>{project.weight_format}</div>}
       {project.supplier && <div className={`text-xs ${pri ? pri.sub : 'text-warm-500'}`}><span className="opacity-60">Forn. </span>{project.supplier}</div>}
       {project.client && <div className={`text-xs ${pri ? pri.sub : 'text-warm-500'}`}><span className="opacity-60">Buy. </span>{project.client}</div>}
+      {project.country_code && <div className={`text-xs ${pri ? pri.sub : 'text-warm-400'}`}><span className="opacity-60">🌍 </span>{project.country_code}{project.country ? ` — ${project.country}` : ''}</div>}
 
       {col.key === 'sviluppo' && steps.length > 0 && <StepProgress steps={steps}/>}
 
