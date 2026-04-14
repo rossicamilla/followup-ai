@@ -434,4 +434,18 @@ Rispondi SOLO con un array JSON, un elemento per ogni mittente nello stesso ordi
   }
 })
 
+// POST /api/outlook/sync-now — trigger manuale sync email → CRM
+router.post('/sync-now', requireAuth, async (req, res) => {
+  try {
+    const { syncEmailsForUser } = require('../services/emailSync');
+    const result = await syncEmailsForUser(req.profile.id);
+    res.json({ success: true, ...result });
+  } catch (e) {
+    if (e.message?.includes('Token Outlook non trovato')) {
+      return res.status(400).json({ error: 'Outlook non connesso', not_connected: true });
+    }
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

@@ -177,6 +177,7 @@ export default function Tasks() {
   const [processingEmails, setProcessingEmails] = useState(false)
   const [emailResult, setEmailResult]       = useState(null)
   const [outlookConnected, setOutlookConnected] = useState(false)
+  const [syncing, setSyncing]               = useState(false)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -196,6 +197,18 @@ export default function Tasks() {
       api('/api/outlook/status').then(d => setOutlookConnected(d.connected)).catch(() => {})
     }
   }, [profile])
+
+  async function syncCRM() {
+    setSyncing(true); setEmailResult(null)
+    try {
+      const r = await api('/api/outlook/sync-now', { method: 'POST', body: {} })
+      setEmailResult({ ok: true, syncMsg: `${r.processed} email analizzate · ${r.updated} aggiornamenti CRM` })
+      if (r.updated > 0) load()
+    } catch (e) {
+      setEmailResult({ ok: false, error: e.message })
+    }
+    setSyncing(false)
+  }
 
   async function processEmails() {
     setProcessingEmails(true); setEmailResult(null)
@@ -275,14 +288,25 @@ export default function Tasks() {
             </p>
           </div>
           {outlookConnected && isAdminOrManager && (
-            <button onClick={processEmails} disabled={processingEmails}
-              className="flex items-center gap-1.5 text-xs font-600 px-3 py-1.5 rounded-xl border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-40">
-              {processingEmails
-                ? <span className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"/>
-                : <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5"><rect x="1.5" y="3.5" width="13" height="10" rx="1.5"/><path d="M1.5 6.5h13M5.5 6.5v7"/></svg>
-              }
-              {processingEmails ? 'Analisi...' : 'Email'}
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button onClick={syncCRM} disabled={syncing}
+                title="Sincronizza email con CRM: aggiorna progetti, pipeline e contatti"
+                className="flex items-center gap-1.5 text-xs font-600 px-3 py-1.5 rounded-xl border border-emerald-200 text-emerald-700 hover:bg-emerald-50 transition-colors disabled:opacity-40">
+                {syncing
+                  ? <span className="w-3 h-3 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"/>
+                  : <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5"><path d="M2 8a6 6 0 1 0 1-3.3"/><path d="M2 2v4h4"/></svg>
+                }
+                {syncing ? 'Sync...' : 'Sync CRM'}
+              </button>
+              <button onClick={processEmails} disabled={processingEmails}
+                className="flex items-center gap-1.5 text-xs font-600 px-3 py-1.5 rounded-xl border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-40">
+                {processingEmails
+                  ? <span className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"/>
+                  : <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5"><rect x="1.5" y="3.5" width="13" height="10" rx="1.5"/><path d="M1.5 6.5h13M5.5 6.5v7"/></svg>
+                }
+                {processingEmails ? 'Analisi...' : 'Email'}
+              </button>
+            </div>
           )}
         </div>
 
@@ -290,7 +314,7 @@ export default function Tasks() {
           <div className={`mb-3 px-3 py-2 rounded-xl text-xs font-500 flex items-center justify-between ${
             emailResult.ok ? 'bg-purple-50 text-purple-700' : 'bg-red-50 text-red-600'
           }`}>
-            <span>{emailResult.ok ? (emailResult.count > 0 ? `✦ ${emailResult.count} email analizzate` : '✦ Nessuna email nuova') : `✗ ${emailResult.error}`}</span>
+            <span>{emailResult.ok ? (emailResult.syncMsg || (emailResult.count > 0 ? `✦ ${emailResult.count} email analizzate` : '✦ Nessuna email nuova')) : `✗ ${emailResult.error}`}</span>
             <button onClick={() => setEmailResult(null)} className="opacity-50 hover:opacity-100 ml-2">✕</button>
           </div>
         )}

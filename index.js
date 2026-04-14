@@ -5,6 +5,7 @@ const path = require('path');
 const cron = require('node-cron');
 const axios = require('axios');
 const { startReminderCron, runReminderJob } = require('./services/emailReminder');
+const { runEmailSync } = require('./services/emailSync');
 const { requireAuth, requireRole } = require('./middleware/auth');
 
 const app = express();
@@ -155,7 +156,10 @@ TESTO: ${body}
 }
 
 function startEmailProcessingCron() {
-  // Cron automatico disabilitato per sicurezza:
-  // le email vengono processate solo su richiesta manuale (pulsante "Analizza email" in Tasks)
-  console.log('[email-cron] Modalità manuale — usa il pulsante "Analizza email" nel CRM');
+  // Sync automatico ogni 5 minuti: analizza nuove email e aggiorna CRM
+  cron.schedule('*/5 * * * *', async () => {
+    try { await runEmailSync(); }
+    catch (e) { console.error('[email-sync] Errore cron:', e.message); }
+  });
+  console.log('[email-sync] Cron attivo — sync automatico ogni 5 minuti');
 }
