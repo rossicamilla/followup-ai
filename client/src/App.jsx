@@ -7,6 +7,7 @@ import Pipeline from './components/pipeline/Pipeline'
 import ProductPipeline from './components/pipeline/ProductPipeline'
 import Tasks from './components/tasks/Tasks'
 import Projects from './components/projects/Projects'
+import StandbyView from './components/projects/StandbyView'
 import AINote from './components/ai/AINote'
 import Team from './components/team/Team'
 import Contacts from './components/contacts/Contacts'
@@ -245,6 +246,7 @@ export default function App() {
         onModalClose={() => setPipelinePreProject(null)}
       />
     ),
+    standby: <StandbyView />,
   }
 
   return (

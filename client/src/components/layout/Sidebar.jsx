@@ -36,6 +36,10 @@ const ALL_NAV = [
     id: 'vendite', label: 'Vendite', roles: ['admin', 'manager', 'agent'],
     icon: <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4"><path d="M2 12L6 7l3 3 5-6"/><path d="M11 4h3v3"/></svg>
   },
+  {
+    id: 'standby', label: 'Da rivedere', roles: ['admin', 'manager'],
+    icon: <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4"><circle cx="8" cy="8" r="6"/><path d="M6 5.5v5M10 5.5v5"/></svg>
+  },
 ]
 
 const STORAGE_KEY = 'followup-nav-order'

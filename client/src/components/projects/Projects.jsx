@@ -45,18 +45,6 @@ const COLUMNS = [
     nextStage: null,
     nextLabel: 'Proponi →',
   },
-  {
-    key: 'standby',
-    label: 'Da rivedere',
-    color: 'text-amber-700',
-    dot: 'bg-amber-400',
-    headerBg: 'bg-amber-50',
-    border: 'border-amber-200',
-    cardBorder: 'border-l-amber-400',
-    emptyColor: 'text-amber-300',
-    nextStage: 'idea',
-    nextLabel: '← Riattiva',
-  },
 ]
 
 const MARKETS = ['Horeca', 'Retail']
@@ -1489,7 +1477,6 @@ export default function Projects({ onProponiPipeline }) {
                             if (activeId) return
                             if (col.key === 'sviluppo') setSviluppoView(p)
                             else if (col.key === 'idea') setModal({ type: 'idea', project: p })
-                            else if (col.key === 'standby') setModal({ type: 'standby', project: p })
                             else setModal({ type: 'pronto', project: p })
                           }}
                           onAdvance={handleAdvanced}
@@ -1536,15 +1523,6 @@ export default function Projects({ onProponiPipeline }) {
         />
       )}
       {modal?.type === 'pronto' && (
-        <ProntoModal
-          project={modal.project}
-          onClose={() => setModal(null)}
-          onSaved={(p) => handleSaved(p)}
-          onDeleted={handleDeleted}
-          onProponi={p => { setModal(null); onProponiPipeline?.(p) }}
-        />
-      )}
-      {modal?.type === 'standby' && (
         <ProntoModal
           project={modal.project}
           onClose={() => setModal(null)}
