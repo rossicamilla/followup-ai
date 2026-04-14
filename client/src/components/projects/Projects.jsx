@@ -243,6 +243,7 @@ const GANTT_PALETTE = [
 // ── Gantt View ────────────────────────────────────────────────────────────────
 function GanttView({ steps, onEditDates }) {
   const today = new Date(); today.setHours(0,0,0,0)
+  const noDates = steps.every(s => !s.start_date && !s.end_date)
 
   // Raccoglie tutte le date presenti
   const allDates = []
@@ -285,6 +286,16 @@ function GanttView({ steps, onEditDates }) {
   return (
     <div className="overflow-x-auto">
       <div style={{ minWidth: 600 }}>
+
+        {/* Banner se nessuna data impostata */}
+        {noDates && (
+          <div className="mx-4 mt-3 mb-1 flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 text-xs text-blue-700">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4 flex-shrink-0">
+              <rect x="2" y="3" width="12" height="11" rx="1.5"/><path d="M5 1v4M11 1v4M2 7h12"/>
+            </svg>
+            <span>Clicca su una fase per aggiungere le date di inizio e fine — le barre appariranno nel Gantt.</span>
+          </div>
+        )}
 
         {/* Header mesi */}
         <div className="flex sticky top-0 z-20 bg-white border-b border-warm-200">
@@ -346,20 +357,20 @@ function GanttView({ steps, onEditDates }) {
                   <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-sm rotate-45"
                     style={{ left: `calc(${pct((startD || endD).getTime())} - 6px)`, background: pal.barDone }}/>
                 ) : (
-                  // Nessuna data: placeholder hover
+                  // Nessuna data: placeholder sempre visibile
                   <button onClick={() => onEditDates(step)}
-                    className="absolute inset-2 rounded-lg border-2 border-dashed border-warm-200 hover:border-blue-300 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span className="text-2xs text-warm-400">+ date</span>
+                    className="absolute inset-2 rounded-lg border-2 border-dashed border-warm-200 hover:border-blue-400 hover:bg-blue-50/50 flex items-center justify-center transition-colors">
+                    <span className="text-2xs text-warm-400 group-hover:text-blue-500">+ date</span>
                   </button>
                 )}
 
-                {/* Tooltip date su hover */}
-                {hasAny && (
+                {/* Tooltip date (visibile, cliccabile per modificare) */}
+                {hasAny && !hasBoth && (
                   <button onClick={() => onEditDates(step)}
-                    className="absolute inset-y-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center"
-                    style={{ left: `calc(${pct((startD || endD).getTime())} + 4px)` }}>
-                    <span className="text-2xs text-warm-400 bg-white/80 rounded px-1 border border-warm-100 whitespace-nowrap">
-                      {startD ? fmt(startD) : '?'} – {endD ? fmt(endD) : '?'}
+                    className="absolute inset-y-0 flex items-center opacity-60 hover:opacity-100 transition-opacity"
+                    style={{ left: `calc(${pct((startD || endD).getTime())} + 10px)` }}>
+                    <span className="text-2xs text-warm-500 bg-white rounded px-1.5 py-0.5 border border-warm-200 whitespace-nowrap shadow-sm">
+                      {startD ? fmt(startD) : '?'} → {endD ? fmt(endD) : '+ fine'}
                     </span>
                   </button>
                 )}
